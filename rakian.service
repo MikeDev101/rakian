@@ -1,0 +1,14 @@
+[Unit]
+Description=Rakian OS
+After=autorun.service
+
+[Service]
+Restart=on-failure
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/rakian
+ExecStart=/root/rakian/rakian
+
+[Install]
+WantedBy=multi-user.target
