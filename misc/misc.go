@@ -284,6 +284,20 @@ func GetWiFiStatus() (connected bool, ssid string, signalScaled int, ipaddress s
 	return connected, ssid, signalScaled, ipaddress
 }
 
+func SwitchToPowerSave() {
+	err := exec.Command("cpupower", "frequency-set", "--governor", "powersave").Run()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func SwitchToNormalMode() {
+	err := exec.Command("cpupower", "frequency-set", "--governor", "schedutil").Run()
+	if err != nil {
+		panic(err)
+	}
+}
+
 func TestText(display *sh1107.SH1107) {
 	log.Print("Testing lowercase")
 

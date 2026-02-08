@@ -1,14 +1,14 @@
 package menu
 
 import (
-	"time"
 	"context"
-	"sync"
 	"log"
-	
+	"sync"
+	"time"
+
 	"misc"
-	"timers"
 	"sh1107"
+	"timers"
 )
 
 type DialerMenu struct {
@@ -43,28 +43,33 @@ func (instance *DialerMenu) Configure() {
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
+func (instance *DialerMenu) ConfigureWithArgs(args ...any) {
+	// Unused
+	instance.Configure()
+}
+
 func (instance *DialerMenu) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*DialerMenu).Run() before (*DialerMenu).Configure()!")
 	}
-	
+
 	if instance.parent.Get("InitialKey") != ' ' {
 		instance.dial_number = ""
 		instance.dial_number += string(instance.parent.Get("InitialKey").(rune))
 		instance.parent.Set("InitialKey", ' ')
 	}
 	instance.render()
-	
+
 	instance.wg.Add(1)
 	defer instance.wg.Done()
 	for {
 		select {
 		case <-instance.ctx.Done():
 			return
-		
-		case evt := <-instance.parent.KeypadEvents:			
+
+		case evt := <-instance.parent.KeypadEvents:
 			if evt.State {
-				
+
 				instance.parent.Timers["keypad"].Reset()
 				instance.parent.Timers["oled"].Reset()
 				instance.parent.Display.On()
@@ -87,55 +92,65 @@ func (instance *DialerMenu) Run() {
 					}
 					instance.lastAsteriskTime = now
 					instance.render()
-				
+
 				case 'C':
 					go instance.parent.PlayKey()
-					
+
 					// Delete last key from dial_number
 					runes := []rune(instance.dial_number)
 					if len(runes) > 0 {
 						instance.dial_number = string(runes[:len(runes)-1])
 					}
-					
-					// Check if 
+
+					// Check if
 					if len(runes) == 0 {
 						go instance.parent.Pop()
 						return
 					} else {
 						instance.render()
 					}
-				
+
 				case 'P':
 					go instance.parent.PlayKey()
 					go instance.parent.Push("power")
 					return
-				
+
 				case 'U':
+					go instance.parent.PlayKey()
 				case 'D':
+					go instance.parent.PlayKey()
 				case 'S':
 					if len(instance.dial_number) == 0 {
 						continue
 					}
-					if instance.parent.Modem.FlightMode {
-						instance.parent.RenderAlert("prohibited", []string{"Flight mode", "on!"})
+
+					if instance.parent.Modem == nil || !instance.parent.Modem.Connected {
+						instance.parent.RenderAlert("prohibited", []string{"No", "service!"})
 						go instance.parent.PlayAlert()
-						timers.SleepWithContext(3 * time.Second, instance.ctx)
+						timers.SleepWithContext(3*time.Second, instance.ctx)
 						go instance.parent.Pop()
 						return
-					
-					} else if instance.parent.Modem.Connected {
+
+					} else if instance.parent.Modem.FlightMode {
+						instance.parent.RenderAlert("prohibited", []string{"Flight mode", "on!"})
+						go instance.parent.PlayAlert()
+						timers.SleepWithContext(3*time.Second, instance.ctx)
+						go instance.parent.Pop()
+						return
+
+					} else if !instance.parent.Modem.SimCardInserted {
+						instance.parent.RenderAlert("prohibited", []string{"Insert a", "SIM card", "to continue."})
+						go instance.parent.PlayAlert()
+						timers.SleepWithContext(3*time.Second, instance.ctx)
+						go instance.parent.Pop()
+						return
+
+					} else {
 						go instance.parent.PlayKey()
 						instance.parent.Modem.Dial(instance.dial_number)
 						return
-					
-					} else {
-						instance.parent.RenderAlert("prohibited", []string{"No", "service!"})
-						go instance.parent.PlayAlert()
-						timers.SleepWithContext(3 * time.Second, instance.ctx)
-						go instance.parent.Pop()
-						return
 					}
-				
+
 				default:
 					instance.dial_number += string(evt.Key)
 					instance.render()

@@ -7,29 +7,29 @@ import (
 )
 
 func (m *Menu) PlayAlert() {
-        if m.Get("BeepOnly").(bool) {
-                m.Player.Stop()
-                m.Player.Tone(83, 5) // B5 (Alert/Stop sound)
-                time.Sleep(50 * time.Millisecond)
-                m.Player.Stop()
-        } else if m.Get("CanRing").(bool) {
-                m.Player.Stop()
-                m.Player.Tone(83, 5) // B5 (Alert/Stop sound)
-                time.Sleep(time.Second)
-                m.Player.Stop()
-        }
+	if m.Get("BeepOnly").(bool) {
+		m.Player.Stop()
+		m.Player.Tone(83, 5) // B5 (Alert/Stop sound)
+		time.Sleep(50 * time.Millisecond)
+		m.Player.Stop()
+	} else if m.Get("CanRing").(bool) {
+		m.Player.Stop()
+		m.Player.Tone(83, 5) // B5 (Alert/Stop sound)
+		time.Sleep(time.Second)
+		m.Player.Stop()
+	}
 }
 
 func (m *Menu) PlayKey() {
-        if m.Get("BeepOnly").(bool) {
-                m.Player.Tone(82, 2)
-                time.Sleep(50 * time.Millisecond)
-                m.Player.Stop()
-        } else if m.Get("CanRing").(bool) {
-                m.Player.Tone(82, 2)
-                time.Sleep(150 * time.Millisecond)
-                m.Player.Stop()
-        }
+	if m.Get("BeepOnly").(bool) {
+		m.Player.Tone(82, 2)
+		time.Sleep(50 * time.Millisecond)
+		m.Player.Stop()
+	} else if m.Get("CanRing").(bool) {
+		m.Player.Tone(82, 2)
+		time.Sleep(150 * time.Millisecond)
+		m.Player.Stop()
+	}
 }
 
 func (m *Menu) RenderAlert(icon string, status []string) {
@@ -50,7 +50,7 @@ func (m *Menu) RenderBatteryIcon(flash *bool) {
 			m.Display.DrawImage(m.Sprites["battery/unknown"], 105, 20)
 		}
 		*flash = !*flash
-		
+
 	} else {
 		if m.Get("BatteryPercent").(int) <= 5 {
 			if *flash {
@@ -67,21 +67,21 @@ func (m *Menu) RenderBatteryIcon(flash *bool) {
 
 func (m *Menu) RenderStatusBar(flash *bool) {
 	m.RenderBatteryIcon(flash)
-	
+
 	if m.Modem == nil || m.Modem.FlightMode {
 		m.Display.DrawImage(m.Sprites["cell/off"], 0, 20)
 	} else {
 		m.Display.DrawImage(m.Sprites[fmt.Sprintf("cell/%d", m.Modem.SignalStrength)], 0, 20)
 	}
-	
+
 	if m.Get("WiFi_Connected").(bool) {
 		m.Display.DrawImage(m.Sprites[fmt.Sprintf("wifi/%d", m.Get("WiFi_Strength").(int))], 20, 20)
 	} else {
 		m.Display.DrawImage(m.Sprites["wifi/no_networks"], 20, 20)
 	}
-	
+
 	m.Display.SetColor(sh1107.White)
 	m.Display.SetLineWidth(1)
-	m.Display.DrawLine(0, 33, 128, 33)
+	m.Display.DrawLine(0, 33, 127, 33)
 	m.Display.Stroke()
 }

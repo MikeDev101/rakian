@@ -1,11 +1,11 @@
 package menu
 
 import (
-	"time"
 	"context"
-	"sync"
 	"log"
-	
+	"sync"
+	"time"
+
 	// "sh1107"
 	// "timers"
 	"misc"
@@ -35,11 +35,16 @@ func (instance *VeryLowBatteryAlert) Configure() {
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
+func (instance *VeryLowBatteryAlert) ConfigureWithArgs(args ...any) {
+	// Unused
+	instance.Configure()
+}
+
 func (instance *VeryLowBatteryAlert) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*VeryLowBatteryAlert).Run() before (*VeryLowBatteryAlert).Configure()!")
 	}
-		
+
 	if instance.parent.Get("CanVibrate").(bool) {
 		instance.wg.Add(1)
 		go func() {
@@ -47,7 +52,7 @@ func (instance *VeryLowBatteryAlert) Run() {
 			misc.VibrateAlert(instance.parent.Player, instance.ctx)
 		}()
 	}
-	
+
 	if instance.parent.Get("CanRing").(bool) || instance.parent.Get("BeepOnly").(bool) {
 		instance.wg.Add(1)
 		go func() {
@@ -55,16 +60,16 @@ func (instance *VeryLowBatteryAlert) Run() {
 			misc.PlayLowBattery(instance.parent.Player, instance.ctx)
 		}()
 	}
-	
+
 	instance.wg.Add(1)
 	go func() {
 		defer instance.wg.Done()
 		instance.render()
-		
+
 		select {
 		case <-instance.ctx.Done():
 			return
-		
+
 		case <-time.After(3 * time.Second):
 			instance.parent.Timers["oled"].Restart()
 			instance.parent.Timers["keypad"].Restart()

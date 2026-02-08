@@ -36,6 +36,9 @@ type Modem struct {
 	MissedCallChan    chan bool
 	CallStartChan     chan bool
 	CallEndChan       chan bool
+	CallErrorChan     chan bool
+	CallHandledChan   chan bool
+	SimCardInserted   bool
 	NowRinging        bool
 	urcChan           chan string
 	inCommand         bool
@@ -59,13 +62,15 @@ func NewModem(port string, baud int) (*Modem, error) {
 	}
 
 	m := &Modem{
-		CallState:     &CallState{},
-		Carrier:       "Searching...",
-		Port:          p,
-		RingingChan:   make(chan bool, 1),
-		CallStartChan: make(chan bool, 1),
-		CallEndChan:   make(chan bool, 1),
-		urcChan:       make(chan string, 20),
+		CallState:       &CallState{},
+		Carrier:         "Searching...",
+		Port:            p,
+		RingingChan:     make(chan bool, 1),
+		CallStartChan:   make(chan bool, 1),
+		CallEndChan:     make(chan bool, 1),
+		CallErrorChan:   make(chan bool, 1),
+		CallHandledChan: make(chan bool, 1),
+		urcChan:         make(chan string, 20),
 	}
 
 	m.handlers = map[string]func(string){
@@ -76,6 +81,7 @@ func NewModem(port string, baud int) (*Modem, error) {
 		"+SIMCARD:":    m.handleSIMCard,
 		"+CPIN:":       m.handleCPIN,
 		"+CCLK:":       m.handleClock,
+		"+CME ERROR:":  m.handleCMEError,
 		"+CMEE":        m.handleCMEE,
 		"+CLCC:":       m.handleCallStatus,
 		"MISSED_CALL:": m.handleMissedCall,
@@ -100,9 +106,11 @@ func NewModem(port string, baud int) (*Modem, error) {
 		"AT+CMGD=1,4",       // Clear SMS storage
 		"AT+CNMI=2,2,0,0,0", // Configure notifications
 		"AT+CPCMFRM=1",      // Configure 16 KHz audio mode
+		"AT+CPIN?",          // Check SIM card status
 	}
 	for _, cmd := range initCmds {
-		m.send(cmd)
+		resp, _ := m.send(cmd)
+		m.HandleEvent(resp)
 	}
 
 	return m, nil
@@ -148,7 +156,7 @@ func (m *Modem) EnterNumber(key rune) {
 func (m *Modem) isUnsolicited(line string) bool {
 	prefixes := []string{
 		"RING", "+CMTI:", "+CSQ:", "+CLCC:", "+CCLK:", "+SIMCARD:",
-		"+CPIN", "+CNSMOD:", "+CMEE", "MISSED_CALL:", "NO CARRIER", "+CBC:",
+		"+CPIN", "+CNSMOD:", "+CME ERROR:", "+CMEE", "MISSED_CALL:", "NO CARRIER", "+CBC:",
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(line, p) {
@@ -200,6 +208,12 @@ func (m *Modem) Dial(number string) error {
 	resp, err := m.send("ATD" + number + ";")
 	m.HandleEvent(resp)
 	if strings.Contains(resp, "ERROR") {
+
+		// Attempt state recovery
+		m.CallErrorChan <- true
+		<-m.CallHandledChan
+
+		// End the call
 		m.CallEndChan <- true
 	}
 
@@ -234,11 +248,21 @@ func (m *Modem) ToggleFlightMode() error {
 		resp, err := m.send("AT+CFUN=1")
 		m.HandleEvent(resp)
 		m.FlightMode = false
+
+		// Get network connection type
+		network_type, _ := m.send("AT+CNSMOD?")
+		go m.handlers["+CNSMOD:"](network_type)
+
+		// Get carrier status
+		carrier_status, _ := m.send("AT+COPS?")
+		go m.handlers["+COPS:"](carrier_status)
+
 		return err
 	} else {
 		resp, err := m.send("AT+CFUN=0")
 		m.HandleEvent(resp)
 		m.FlightMode = true
+		m.SimCardInserted = false
 		return err
 	}
 }
@@ -496,8 +520,42 @@ func (m *Modem) handleConnectionType(line string) {
 	}
 }
 func (m *Modem) handleSIMCard(string) {}
-func (m *Modem) handleCPIN(string)    {}
-func (m *Modem) handleCMEE(string)    {}
+func (m *Modem) handleCPIN(line string) {
+	re := regexp.MustCompile(`\+CPIN:\s*(.*)`)
+	if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+		status := strings.TrimSpace(matches[1])
+		log.Printf("🔒 SIM Status: %s", status)
+
+		switch status {
+		case "READY":
+			m.SimCardInserted = true
+		// TODO: add the rest
+		case "SIM PIN":
+		case "SIM PUK":
+		case "PH-SIM PIN":
+		case "SIM PIN2":
+		case "SIM PUK2":
+		case "PH-NET PIN":
+		}
+	}
+}
+func (m *Modem) handleCMEE(string) {}
+func (m *Modem) handleCMEError(line string) {
+
+	re := regexp.MustCompile(`\+CME ERROR:\s*(\d+)`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) > 1 {
+		code := matches[1]
+
+		log.Printf("🚫 CME Error: %s", code)
+
+		if code == "10" { // No SIM card
+			m.SimCardInserted = false
+			m.NetworkGeneration = ""
+			m.Carrier = "Insert SIM card"
+		}
+	}
+}
 
 func (m *Modem) handleNoCarrier(string) {
 	m.CallEndChan <- true

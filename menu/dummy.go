@@ -1,14 +1,14 @@
 package menu
 
 import (
-	"time"
 	"context"
-	"sync"
 	"log"
-	
+	"sync"
+	"time"
+
+	"misc"
 	"sh1107"
 	"timers"
-	"misc"
 )
 
 type DummyMenu struct {
@@ -38,27 +38,32 @@ func (instance *DummyMenu) Configure() {
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
+func (instance *DummyMenu) ConfigureWithArgs(args ...any) {
+	// Unused
+	instance.Configure()
+}
+
 func (instance *DummyMenu) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*DummyMenu).Run() before (*DummyMenu).Configure()!")
 	}
-	
+
 	instance.render()
-	
+
 	instance.wg.Add(1)
 	go func() {
 		defer instance.wg.Done()
 		for {
-			timers.SleepWithContext(250 * time.Millisecond, instance.ctx)
+			timers.SleepWithContext(250*time.Millisecond, instance.ctx)
 			select {
 			case <-instance.ctx.Done():
 				return
 			default:
 				instance.render()
-			}			
+			}
 		}
 	}()
-	
+
 	instance.wg.Add(1)
 	go func() {
 		defer instance.wg.Done()
@@ -67,15 +72,15 @@ func (instance *DummyMenu) Run() {
 			case <-instance.ctx.Done():
 				return
 			case evt := <-instance.parent.KeypadEvents:
-				
+
 				if evt.State {
-					
+
 					instance.parent.Timers["keypad"].Reset()
 					instance.parent.Timers["oled"].Reset()
 					instance.parent.Display.On()
 					misc.KeyLightsOn()
 					go instance.parent.PlayKey()
-					
+
 					if evt.Key == 'P' {
 						go instance.parent.Pop()
 						return
@@ -105,5 +110,5 @@ func (instance *DummyMenu) Stop() {
 }
 
 func (instance *DummyMenu) cleanup() {
-	
+
 }

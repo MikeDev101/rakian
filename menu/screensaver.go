@@ -1,14 +1,14 @@
 package menu
 
 import (
-	"time"
 	"context"
-	"sync"
 	"log"
-	
+	"sync"
+	"time"
+
+	"misc"
 	"sh1107"
 	"timers"
-	"misc"
 )
 
 type Screensaver struct {
@@ -26,18 +26,18 @@ type Screensaver struct {
 func (m *Menu) NewScreensaver() *Screensaver {
 	return &Screensaver{
 		parent: m,
-		dx: 1,
-		dy: 1,
-		x: 0,
-		y: 20,
-		flip: sh1107.Normal,
+		dx:     1,
+		dy:     1,
+		x:      0,
+		y:      20,
+		flip:   sh1107.Normal,
 	}
 }
 
 func (instance *Screensaver) render() {
 	display := instance.parent.Display
 	duck := instance.parent.Sprites["duck"]
-	
+
 	switch {
 	case instance.dx < 0 && instance.dy < 0:
 		instance.flip = sh1107.UpsideDown
@@ -48,7 +48,7 @@ func (instance *Screensaver) render() {
 	default:
 		instance.flip = sh1107.Flipped
 	}
-	
+
 	display.Clear(sh1107.Black)
 	display.DrawImage(
 		sh1107.FlipImage(duck, instance.flip),
@@ -59,10 +59,10 @@ func (instance *Screensaver) render() {
 	// Bounce logic
 	instance.x += instance.dx
 	instance.y += instance.dy
-	if instance.x <= 0 || instance.x + duck.Bounds().Max.X >= display.Width {
+	if instance.x <= 0 || instance.x+duck.Bounds().Max.X >= display.Width {
 		instance.dx = -instance.dx
 	}
-	if instance.y <= 20 || instance.y + duck.Bounds().Max.Y >= display.Height - 5 {
+	if instance.y <= 20 || instance.y+duck.Bounds().Max.Y >= display.Height-5 {
 		instance.dy = -instance.dy
 	}
 }
@@ -73,20 +73,26 @@ func (instance *Screensaver) Configure() {
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
+func (instance *Screensaver) ConfigureWithArgs(args ...any) {
+	// Unused
+	instance.Configure()
+}
+
 func (instance *Screensaver) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*Screensaver).Run() before (*Screensaver).Configure()!")
 	}
-	
+
 	if instance.running {
 		panic("Attempted to run multiple entries of (*Screensaver).Run()")
 	}
 	instance.running = true
-	
+
 	instance.render()
 	instance.parent.Display.SetBrightness(0.0)
 	instance.parent.Timers["oled"].Stop()
-	
+	misc.SwitchToPowerSave()
+
 	instance.wg.Add(1)
 	go func() {
 		defer instance.wg.Done()
@@ -94,24 +100,26 @@ func (instance *Screensaver) Run() {
 			timers.SleepWithContext(time.Millisecond, instance.ctx)
 			select {
 			case <-instance.ctx.Done():
+				misc.SwitchToNormalMode()
 				return
 			default:
 				instance.render()
-			}			
+			}
 		}
 	}()
-	
+
 	instance.wg.Add(1)
 	go func() {
 		defer instance.wg.Done()
 		for {
 			select {
 			case <-instance.ctx.Done():
+				misc.SwitchToNormalMode()
 				return
-				
-			case evt := <-instance.parent.KeypadEvents:				
+
+			case evt := <-instance.parent.KeypadEvents:
 				if evt.State {
-					
+
 					instance.parent.Timers["keypad"].Restart()
 					instance.parent.Timers["oled"].Restart()
 					instance.parent.Display.On()

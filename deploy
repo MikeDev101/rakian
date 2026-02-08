@@ -1,0 +1,12 @@
+#!/bin/sh
+
+TARGET="10.0.0.24"
+
+echo "Compiling..."
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X 'main.DEBUG_MODE=false'" .
+echo "Uploading..."
+ssh root@$TARGET "systemctl stop rakian.service; pkill rakian"
+scp -q ./rakian root@$TARGET:~/rakian
+echo "Restarting..."
+ssh root@$TARGET "systemctl restart rakian.service"
+exit 0

@@ -1,14 +1,14 @@
 package menu
 
 import (
-	"fmt"
-	"time"
 	"context"
-	"sync"
+	"fmt"
 	"log"
-	
-	"sh1107"
+	"sync"
+	"time"
+
 	"misc"
+	"sh1107"
 )
 
 type HomeSelectionMenu struct {
@@ -17,14 +17,14 @@ type HomeSelectionMenu struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
-	selection  uint8
-	viewOffset uint8
+	selection  int
+	viewOffset int
 	options    [][]string
 }
 
 func (m *Menu) NewHomeSelectionMenu() *HomeSelectionMenu {
 	return &HomeSelectionMenu{
-		parent: m,
+		parent:    m,
 		selection: 0,
 		options: [][]string{
 			{"Phone Book", "home/PhoneBook"},
@@ -44,37 +44,37 @@ func (instance *HomeSelectionMenu) render() {
 	display := instance.parent.Display
 	label := instance.options[instance.selection][0]
 	sprite := instance.parent.Sprites[instance.options[instance.selection][1]]
-	
+
 	display.Clear(sh1107.Black)
-	
+
 	font := display.Use_Font8_Normal()
 	display.DrawTextAligned(0, 20, font, "Home", false, sh1107.AlignRight, sh1107.AlignNone)
-	
+
 	display.SetColor(sh1107.White)
 	display.SetLineWidth(1)
-	display.DrawLine(0, 33, 128, 33)
+	display.DrawLine(0, 33, 127, 33)
 	display.Stroke()
-	
+
 	font = display.Use_Font8_Bold()
 	display.DrawTextAligned(64, 105, font, "Select", false, sh1107.AlignCenter, sh1107.AlignNone)
-	display.DrawTextAligned(128, 20, font, fmt.Sprintf("%d", int(instance.selection + 1)), false, sh1107.AlignLeft, sh1107.AlignNone)
-	
+	display.DrawTextAligned(128, 20, font, fmt.Sprintf("%d", int(instance.selection+1)), false, sh1107.AlignLeft, sh1107.AlignNone)
+
 	font = display.Use_Font16()
-	display.DrawTextAligned(64,40, font, label, false, sh1107.AlignCenter, sh1107.AlignCenter)
+	display.DrawTextAligned(64, 40, font, label, false, sh1107.AlignCenter, sh1107.AlignCenter)
 	display.DrawImageAligned(sprite, 64, 84, sh1107.AlignCenter, sh1107.AlignCenter)
-	
+
 	display.Render()
 }
 
 func (instance *HomeSelectionMenu) handle_selection() {
-	switch instance.selection {
-		case 6: // Calculator
-			go instance.parent.ToMenu("calculator")
-	}
-	
-	// Generic handler
 	go instance.parent.PlayKey()
-	go instance.parent.Pop()
+	switch instance.selection {
+	case 6: // Calculator
+		go instance.parent.PopToMenu("calculator")
+	default:
+		// Generic handler
+		go instance.parent.Pop()
+	}
 }
 
 func (instance *HomeSelectionMenu) Configure() {
@@ -83,12 +83,17 @@ func (instance *HomeSelectionMenu) Configure() {
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
+func (instance *HomeSelectionMenu) ConfigureWithArgs(args ...any) {
+	// Unused
+	instance.Configure()
+}
+
 func (instance *HomeSelectionMenu) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*HomeSelectionMenu).Run() before (*HomeSelectionMenu).Configure()!")
 	}
-	
-	instance.render()	
+
+	instance.render()
 	instance.wg.Add(1)
 	go func() {
 		defer instance.wg.Done()
@@ -96,14 +101,14 @@ func (instance *HomeSelectionMenu) Run() {
 			select {
 			case <-instance.ctx.Done():
 				return
-			case evt := <-instance.parent.KeypadEvents:				
+			case evt := <-instance.parent.KeypadEvents:
 				if evt.State {
-					
+
 					instance.parent.Timers["keypad"].Reset()
 					instance.parent.Timers["oled"].Reset()
 					instance.parent.Display.On()
 					misc.KeyLightsOn()
-					
+
 					switch evt.Key {
 					case 'U':
 						if instance.selection > 0 {
@@ -111,7 +116,7 @@ func (instance *HomeSelectionMenu) Run() {
 							instance.render()
 						}
 					case 'D':
-						if instance.selection < uint8(len(instance.options)-1) {
+						if instance.selection < len(instance.options)-1 {
 							instance.selection += 1
 							instance.render()
 						}
@@ -126,8 +131,19 @@ func (instance *HomeSelectionMenu) Run() {
 						go instance.parent.PlayKey()
 						go instance.parent.Push("power")
 						return
+					default:
+						// If key is a number in range of options, select it
+						if evt.Key > '0' && evt.Key <= '9' {
+
+							// Convert evt.Key to int
+							instance.selection = min(int(evt.Key-'0')-1, len(instance.options)-1)
+
+							// Handle
+							go instance.handle_selection()
+							return
+						}
 					}
-					
+
 					go instance.parent.PlayKey()
 				}
 			}

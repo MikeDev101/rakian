@@ -1,28 +1,28 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"image"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"log"
 	"time"
-	"context"
 
-	"phone"
-	"menu"
-	"tones"
 	"keypad"
+	"menu"
 	"misc"
-	"timers"
+	"phone"
 	"sh1107"
+	"timers"
+	"tones"
 )
 
 // go build -ldflags "-X 'main.DEBUG_MODE=false'" .
 var DEBUG_MODE string = "true"
-var FW_VERSION string = "0.1.12 (2.5.2026)"
-var EXIT_MODE  uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
+var FW_VERSION string = "0.1.13 (2.7.2026)"
+var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
 
 var SPRITE_LIST = []string{
 
@@ -72,7 +72,7 @@ var SPRITE_LIST = []string{
 	"wifi/networks_found",
 	"wifi/no_networks",
 	"wifi/no_internet",
-	
+
 	// Home screen menu sprites
 	"home/Calculator",
 	"home/CallDivert",
@@ -83,7 +83,7 @@ var SPRITE_LIST = []string{
 	"home/PhoneBook",
 	"home/Settings",
 	"home/Tones",
-	
+
 	// Misc sprites
 	"alert",
 	"ok",
@@ -97,7 +97,7 @@ var SPRITE_LIST = []string{
 func exit() {
 	// DO NOT TOUCH
 	if DEBUG_MODE == "true" {
-		log.Println("👋 Goodbye")	
+		log.Println("👋 Goodbye")
 		os.Exit(0)
 	} else {
 		switch EXIT_MODE {
@@ -112,21 +112,21 @@ func exit() {
 }
 
 func main() {
-	
+
 	// Handle system exit
 	defer exit()
-	
+
 	// Configure main-level scoped values
 	var VeryLowBattChan = make(chan bool, 1)
 	var LowBattChan = make(chan bool, 1)
 	var DeadBattChan = make(chan bool, 1)
-	var lastLowBattTime   time.Time
+	var lastLowBattTime time.Time
 	var lastVeryLowBattTime time.Time
-	
+
 	// Initialize the display
 	display := sh1107.New(0x3c, 0, sh1107.UpsideDown, 128, 128)
 	defer display.Close()
-	
+
 	if _, capacity, _, read_err := misc.GetBatteryStatus(); read_err == nil && capacity <= 1 {
 		alert, err := sh1107.LoadSprite("sprites/battery_needs_charge.bmp")
 		if err != nil {
@@ -146,78 +146,83 @@ func main() {
 		EXIT_MODE = 1
 		return
 	}
-	
+
 	// Create a global contexr
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	global_quit := func(mode uint8) {
 		log.Println("👋 Global quit raised")
 		EXIT_MODE = mode
 		cancel()
 	}
-	
+
 	// Create signal handlers for interrupts or shutdown requests
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	
+
 	// Initialize components
 	player := tones.New()
 	keypadEvents := keypad.Run(ctx)
 	modem := phone.Run()
-	
+
 	// Boot logo
 	logo, err := sh1107.LoadSprite("sprites/logo.bmp")
 	if err != nil {
 		log.Fatalf("⚠️ Failed to load logo: %v", err)
-	}	
+	}
 	display.SetBrightness(100)
-	
+
 	draw_logo := func() {
 		display.Clear(sh1107.Black)
 		display.DrawImage(logo, 20, 63)
 		display.Render()
 	}
-	
+
 	draw_logo()
 	display.On()
 	misc.KeyLightsOn()
-	go misc.PlayBoot(player, ctx)
-	
+
+	if DEBUG_MODE != "true" {
+		go misc.PlayBoot(player, ctx)
+		time.Sleep(3 * time.Second)
+	}
+
 	display.Load_Font_Time()
 	display.Load_Font8_Bold()
 	display.Load_Font8_Normal()
 	display.Load_Font16()
-	
+
 	if DEBUG_MODE == "true" {
-		display.DrawTextAligned(64, 20, display.Use_Font8_Bold(), "DEBUG MODE", false, sh1107.AlignCenter, sh1107.AlignCenter)	
+		display.DrawTextAligned(64, 20, display.Use_Font8_Bold(), "DEBUG MODE", false, sh1107.AlignCenter, sh1107.AlignCenter)
 	}
-	display.DrawTextAligned(64, 82, display.Use_Font8_Normal(), "v" + FW_VERSION, false, sh1107.AlignCenter, sh1107.AlignCenter)
-	
+	display.DrawTextAligned(64, 82, display.Use_Font8_Normal(), "v"+FW_VERSION, false, sh1107.AlignCenter, sh1107.AlignCenter)
+
 	// Show loading bar while loading sprites
-	display.DrawProgressBar(0, 110, 128, 10, 0)
+	display.DrawProgressBar(0, 110, 127, 10, 0)
 	sprites := make(map[string]image.Image, len(SPRITE_LIST))
 	for _, key := range SPRITE_LIST {
-		
+
 		loaded, err := sh1107.LoadSprite(fmt.Sprintf("sprites/%s.bmp", key))
 		if err != nil {
 			log.Fatalf("⚠️ Failed to load sprite %s: %v", key, err)
 		}
 		sprites[key] = loaded
 	}
-	display.DrawProgressBar(0, 110, 128, 10, 1)
-	
+	display.DrawProgressBar(0, 110, 127, 10, 1)
+
 	time.Sleep(time.Second)
 	display.Clear(sh1107.Black)
 	display.Render()
-	
+
 	// Initialize menu system
 	menus := menu.Init(ctx, display, sprites, modem, player, global_quit, keypadEvents)
-	
+
 	// Configure storage
 	misc.GlobalStorage = menus.GlobalStorage
-	
+
 	// Setup global required keys
+	menus.GlobalStorage["DebugMode"] = (DEBUG_MODE == "true")
 	menus.GlobalStorage["CanVibrate"] = true
 	menus.GlobalStorage["CanRing"] = true
 	menus.GlobalStorage["BeepOnly"] = false
@@ -226,14 +231,14 @@ func main() {
 	menus.GlobalStorage["BatteryVoltage"] = ""
 	menus.GlobalStorage["BatteryPercent"] = 0
 	menus.GlobalStorage["BatteryScaledPercent"] = 0
-	
+
 	// Set initial WiFi status values
 	connected, ssid, strength, ipaddr := misc.GetWiFiStatus()
 	menus.Set("WiFi_Connected", connected)
 	menus.Set("WiFi_SSID", ssid)
 	menus.Set("WiFi_Strength", strength)
 	menus.Set("WiFi_IP", ipaddr)
-	
+
 	// Configure WiFi status thread
 	go func() {
 		for {
@@ -249,31 +254,38 @@ func main() {
 			}
 		}
 	}()
-	
+
 	// Handle modem events
 	if modem != nil {
-		go func () {
+		go func() {
 			for {
 				select {
 				case <-ctx.Done():
 					return
-					
+
 				case <-modem.RingingChan:
 					go menus.ToMenu("ring")
 					misc.KeyLightsOn()
 					menus.Timers["keypad"].Stop()
 					menus.Timers["oled"].Stop()
-					
+
 				case <-modem.CallStartChan:
 					go menus.ToMenu("phone")
 					menus.Timers["oled"].Restart()
 					menus.Timers["keypad"].Restart()
-				
+
+				case <-modem.CallErrorChan:
+					log.Println("⚠️ Call failed!")
+					go menus.RenderAlert("alert", []string{"Call", "failed."})
+					menus.Timers["oled"].Restart()
+					menus.Timers["keypad"].Restart()
+					misc.KeyLightsOn()
+					menus.PlayAlert()
+					time.Sleep(2 * time.Second)
+					modem.CallHandledChan <- true
+
 				case <-modem.CallEndChan:
-					go func() {
-						menus.Pop()
-						menus.Pop()
-					}()
+					go menus.ToStart()
 					misc.KeyLightsOn()
 					menus.Timers["oled"].Restart()
 					menus.Timers["keypad"].Restart()
@@ -281,7 +293,7 @@ func main() {
 			}
 		}()
 	}
-	
+
 	// Monitor Battery
 	go func() {
 		for {
@@ -290,26 +302,26 @@ func main() {
 				return
 			case <-time.After(100 * time.Millisecond):
 				voltage, capacity, capacity_scaled, read_err := misc.GetBatteryStatus()
-				
+
 				if read_err != nil {
 					menus.Set("BatteryOK", false)
 					return
 				}
-				
+
 				menus.Set("BatteryOK", true)
 				menus.Set("BatteryVoltage", voltage)
 				menus.Set("BatteryPercent", capacity)
 				menus.Set("BatteryScaledPercent", capacity_scaled)
-				
+
 				now := time.Now()
-				
+
 				if capacity <= 1 {
 					log.Print("🪫 BATTERY EMPTY")
 					DeadBattChan <- true
 					return
-					
+
 				} else if capacity <= 5 {
-					if now.Sub(lastVeryLowBattTime) >= 10 * time.Minute {
+					if now.Sub(lastVeryLowBattTime) >= 10*time.Minute {
 						lastVeryLowBattTime = now
 						log.Print("🪫 VERY LOW BATTERY")
 						select {
@@ -318,7 +330,7 @@ func main() {
 						}
 					}
 				} else if capacity <= 25 {
-					if now.Sub(lastLowBattTime) >= 10 * time.Minute {
+					if now.Sub(lastLowBattTime) >= 10*time.Minute {
 						lastLowBattTime = now
 						log.Print("🪫 LOW BATTERY")
 						select {
@@ -330,26 +342,26 @@ func main() {
 			}
 		}
 	}()
-	
+
 	// Configure power event handlers
-	go func () {
+	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			
+
 			case <-VeryLowBattChan:
 				go menus.ToMenu("very_low_battery")
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
 				menus.Timers["oled"].Restart()
-			
+
 			case <-LowBattChan:
 				go menus.ToMenu("low_battery")
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
 				menus.Timers["oled"].Restart()
-				
+
 			case <-DeadBattChan:
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Stop()
@@ -358,15 +370,17 @@ func main() {
 			}
 		}
 	}()
-	
+
 	// Configure timers
-	menus.Timers["oled"] = timers.New(ctx, 10 * time.Second, false, func() {
-		menus.Push("screensaver")
+	menus.Timers["oled"] = timers.New(ctx, 10*time.Second, false, func() {
+		if !menus.GlobalStorage["DebugMode"].(bool) {
+			menus.Push("screensaver")
+		}
 	})
-	menus.Timers["keypad"] = timers.New(ctx, 5 * time.Second, false, func() {
+	menus.Timers["keypad"] = timers.New(ctx, 5*time.Second, false, func() {
 		misc.KeyLightsOff()
 	})
-	
+
 	// Register menus
 	menus.Register("power", menus.NewPowerMenu())
 	menus.Register("home", menus.NewHomeMenu())
@@ -380,17 +394,18 @@ func main() {
 	menus.Register("dead_battery", menus.NewDeadBatteryAlert())
 	menus.Register("very_low_battery", menus.NewVeryLowBatteryAlert())
 	menus.Register("calculator", menus.NewCalculatorMenu())
-	
+	menus.Register("selector", menus.NewSelector())
+
 	// Run home menu
 	menus.Push("home")
-	
+
 	log.Println("Press CTRL+C to quit")
 	select {
 	case <-sigs:
 		log.Println("Interrupt detected, exiting")
 	case <-ctx.Done():
 	}
-	
+
 	// Wait for all contexts to close
 	menus.Shutdown()
 	if modem != nil {
