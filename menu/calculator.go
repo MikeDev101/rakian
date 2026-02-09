@@ -115,34 +115,34 @@ func (instance *CalculatorMenu) Run() {
 		if len(instance.selection_path) > 0 {
 
 			switch instance.selection_path[0] {
-			case "1. Equals":
+			case "Equals":
 				log.Println("Calculating current expression...")
 				// TODO: calculate the result of the current expression
 
-			case "2. Clear":
+			case "Clear":
 				instance.calc_input = []rune{}
 				instance.calc_displayed = ""
 				log.Println("Clearing current expression...")
 
-			case "3. Exchange rate":
+			case "Exchange rate":
 				// Check if the user selected a suboption
 				if len(instance.selection_path) > 1 {
 					switch instance.selection_path[1] {
-					case "1. Foreign as domestic units":
+					case "Foreign as domestic":
 						log.Println("Storing foreign unit exchange rate expressed as domestic unit...")
 						// TODO
 
-					case "2. Domestic as foreign units":
+					case "Domestic as foreign":
 						log.Println("Storing domestic unit exchange rate expressed as foreign unit...")
 						// TODO
 					}
 				}
 
-			case "4. To domestic":
+			case "To domestic":
 				log.Println("Converting current value (in foreign) to domestic based on stored exchange rate...")
 				// TODO
 
-			case "5. To foreign":
+			case "To foreign":
 				log.Println("Converting current value (in domestic) to foreign based on stored exchange rate...")
 				// TODO
 			}
@@ -222,14 +222,19 @@ func (instance *CalculatorMenu) Run() {
 					go instance.parent.PushWithArgs("selector", &SelectorArgs{
 						Title: "Calculator",
 						Options: [][]string{
-							{"1. Equals"},
-							{"2. Clear"},
-							{"3. Exchange rate", "1. Foreign as domestic units", "2. Domestic as foreign units"},
-							{"4. To domestic"},
-							{"5. To foreign"},
+							{"Equals"},
+							{"Clear"},
+							{"Exchange rate",
+								"Foreign as domestic",
+								"Domestic as foreign",
+							},
+							{"To domestic"},
+							{"To foreign"},
 						},
-						ButtonLabel: "Select",
-						VisibleRows: 3,
+						ButtonLabel:           "Select",
+						VisibleRows:           3,
+						ShowPathInTitle:       true,
+						ShowElemNumberInTitle: true,
 					})
 					return
 

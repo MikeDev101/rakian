@@ -124,25 +124,20 @@ func (instance *DialerMenu) Run() {
 						continue
 					}
 
-					if instance.parent.Modem == nil || !instance.parent.Modem.Connected {
-						instance.parent.RenderAlert("prohibited", []string{"No", "service!"})
-						go instance.parent.PlayAlert()
-						timers.SleepWithContext(3*time.Second, instance.ctx)
-						go instance.parent.Pop()
+					if instance.parent.Modem == nil {
+						instance.ExitWithAlert([]string{"No", "service!"})
 						return
 
 					} else if instance.parent.Modem.FlightMode {
-						instance.parent.RenderAlert("prohibited", []string{"Flight mode", "on!"})
-						go instance.parent.PlayAlert()
-						timers.SleepWithContext(3*time.Second, instance.ctx)
-						go instance.parent.Pop()
+						instance.ExitWithAlert([]string{"Airplane", "mode", "enabled."})
+						return
+
+					} else if !instance.parent.Modem.Connected {
+						instance.ExitWithAlert([]string{"No", "service!"})
 						return
 
 					} else if !instance.parent.Modem.SimCardInserted {
-						instance.parent.RenderAlert("prohibited", []string{"Insert a", "SIM card", "to continue."})
-						go instance.parent.PlayAlert()
-						timers.SleepWithContext(3*time.Second, instance.ctx)
-						go instance.parent.Pop()
+						instance.ExitWithAlert([]string{"Insert a", "SIM card", "to continue."})
 						return
 
 					} else {
@@ -182,4 +177,11 @@ func (instance *DialerMenu) Stop() {
 func (instance *DialerMenu) cleanup() {
 	instance.dial_number = ""
 	instance.pressStart = make(map[rune]time.Time)
+}
+
+func (instance *DialerMenu) ExitWithAlert(msg []string) {
+	instance.parent.RenderAlert("prohibited", msg)
+	go instance.parent.PlayAlert()
+	timers.SleepWithContext(3*time.Second, instance.ctx)
+	go instance.parent.Pop()
 }

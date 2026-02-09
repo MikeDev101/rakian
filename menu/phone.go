@@ -18,6 +18,7 @@ type PhoneMenu struct {
 	parent      *Menu
 	wg          sync.WaitGroup
 	batt_flash  bool
+	data_flash  bool
 	render_loop *timers.ResettableTimer
 }
 
@@ -30,7 +31,7 @@ func (m *Menu) NewPhoneMenu() *PhoneMenu {
 func (instance *PhoneMenu) render() {
 	display := instance.parent.Display
 	display.Clear(sh1107.Black)
-	instance.parent.RenderStatusBar(&instance.batt_flash)
+	instance.parent.RenderStatusBar(&instance.batt_flash, &instance.data_flash)
 
 	font := display.Use_Font8_Bold()
 	display.DrawTextAligned(64, 105, font, "End", false, sh1107.AlignCenter, sh1107.AlignNone)
@@ -58,25 +59,50 @@ func (instance *PhoneMenu) Run() {
 		panic("Attempted to call (*PhoneMenu).Run() before (*PhoneMenu).Configure()!")
 	}
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	// Battery icon blinker
+	instance.wg.Go(func() {
+		for {
+			select {
+			case <-instance.ctx.Done():
+				return
+
+			case <-time.After(time.Second):
+				instance.batt_flash = !instance.batt_flash
+			}
+		}
+	})
+
+	// Data icon blinker
+	instance.wg.Go(func() {
 		instance.render()
 		for {
 			select {
 			case <-instance.ctx.Done():
 				return
-			case <-time.After(time.Second):
+
+			case <-time.After(500 * time.Millisecond):
+				instance.data_flash = !instance.data_flash
+			}
+		}
+	})
+
+	// Main render loop
+	instance.wg.Go(func() {
+		for {
+			select {
+			case <-instance.ctx.Done():
+				return
+
+			case <-time.After(100 * time.Millisecond):
 				if instance.parent.Display.IsOn {
 					instance.render()
 				}
 			}
 		}
-	}()
+	})
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	// Input loop
+	instance.wg.Go(func() {
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -114,7 +140,7 @@ func (instance *PhoneMenu) Run() {
 				}
 			}
 		}
-	}()
+	})
 }
 
 func (instance *PhoneMenu) Pause() {

@@ -6,6 +6,7 @@ import (
 	"image"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -20,8 +21,6 @@ import (
 	"periph.io/x/conn/v3/gpio/gpioreg"
 	"periph.io/x/host/v3"
 )
-
-var GlobalStorage map[string]any
 
 func Shutdown() {
 	cmd := exec.Command("poweroff")
@@ -284,6 +283,34 @@ func GetWiFiStatus() (connected bool, ssid string, signalScaled int, ipaddress s
 	return connected, ssid, signalScaled, ipaddress
 }
 
+func GetModemStatusMMCLI() (state string, operator string, signal string) {
+	// Use mmcli to get modem status in key-value format
+	out, err := exec.Command("mmcli", "-m", "any", "-K").Output()
+	if err != nil {
+		return "error", "", "0"
+	}
+
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		parts := strings.SplitN(line, ": ", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "modem.status.state":
+			state = val
+		case "modem.3gpp.operator-name":
+			operator = val
+		case "modem.status.signal-quality.value":
+			signal = val
+		}
+	}
+	return state, operator, signal
+}
+
 func SwitchToPowerSave() {
 	err := exec.Command("cpupower", "frequency-set", "--governor", "powersave").Run()
 	if err != nil {
@@ -375,4 +402,42 @@ func TestText(display *sh1107.SH1107) {
 	display.DrawText(0, 32, font, "/.-", false)
 	display.Render()
 	time.Sleep(3 * time.Second)
+}
+
+// CheckConnectivity attempts to GET a lightweight URL.
+// It returns true if the status code is 204 (No Content),
+// which is the standard response for this Google endpoint.
+func CheckConnectivity(ctx context.Context) bool {
+	log.Println("🌎 Checking connectivity...")
+
+	// We use a short timeout for the request itself so the
+	// function doesn't hang if the network is "blackholed."
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	url := "http://connectivitycheck.gstatic.com/generate_204"
+
+	req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
+	if err != nil {
+		log.Printf("🌎 Connectivity check failure: %v", err)
+		return false
+	}
+
+	// Using DefaultClient; for production, consider a custom client
+	// with specific Transport settings.
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	res := resp.StatusCode == http.StatusNoContent
+
+	if res {
+		log.Println("🌎 Connectivity check success")
+	} else {
+		log.Printf("🌎 Connectivity check failure: %s", resp.Status)
+	}
+
+	return res
 }

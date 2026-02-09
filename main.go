@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"db"
 	"keypad"
 	"menu"
 	"misc"
@@ -17,13 +18,15 @@ import (
 	"sh1107"
 	"timers"
 	"tones"
+
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 // go build -ldflags "-X 'main.DEBUG_MODE=false'" .
 var DEBUG_MODE string = "true"
-var FW_VERSION string = "0.1.13 (2.7.2026)"
+var FW_VERSION string = "0.1.14 (2.8.2026)"
 var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
-
 var SPRITE_LIST = []string{
 
 	// Battery status sprites
@@ -57,6 +60,8 @@ var SPRITE_LIST = []string{
 	"cell/off",
 	"cell/prohibit",
 	"cell/sos",
+	"cell/airplane",
+	"cell/no_sim",
 
 	// WiFi status sprites
 	"wifi/0",
@@ -67,7 +72,6 @@ var SPRITE_LIST = []string{
 	"wifi/5",
 	"wifi/6",
 	"wifi/7",
-	"wifi/off",
 	"wifi/connecting",
 	"wifi/networks_found",
 	"wifi/no_networks",
@@ -92,6 +96,7 @@ var SPRITE_LIST = []string{
 	"very_low_battery",
 	"dead_battery",
 	"duck",
+	"logo",
 }
 
 func exit() {
@@ -114,7 +119,9 @@ func exit() {
 func main() {
 
 	// Handle system exit
-	defer exit()
+	if DEBUG_MODE != "true" {
+		defer exit()
+	}
 
 	// Configure main-level scoped values
 	var VeryLowBattChan = make(chan bool, 1)
@@ -122,6 +129,13 @@ func main() {
 	var DeadBattChan = make(chan bool, 1)
 	var lastLowBattTime time.Time
 	var lastVeryLowBattTime time.Time
+
+	// Init db
+	database, err := gorm.Open(sqlite.Open("/root/rakian/kvstore.db"), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+	database.AutoMigrate(&db.KVStore{})
 
 	// Initialize the display
 	display := sh1107.New(0x3c, 0, sh1107.UpsideDown, 128, 128)
@@ -147,7 +161,7 @@ func main() {
 		return
 	}
 
-	// Create a global contexr
+	// Create a global context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -183,23 +197,7 @@ func main() {
 	display.On()
 	misc.KeyLightsOn()
 
-	if DEBUG_MODE != "true" {
-		go misc.PlayBoot(player, ctx)
-		time.Sleep(3 * time.Second)
-	}
-
-	display.Load_Font_Time()
-	display.Load_Font8_Bold()
-	display.Load_Font8_Normal()
-	display.Load_Font16()
-
-	if DEBUG_MODE == "true" {
-		display.DrawTextAligned(64, 20, display.Use_Font8_Bold(), "DEBUG MODE", false, sh1107.AlignCenter, sh1107.AlignCenter)
-	}
-	display.DrawTextAligned(64, 82, display.Use_Font8_Normal(), "v"+FW_VERSION, false, sh1107.AlignCenter, sh1107.AlignCenter)
-
-	// Show loading bar while loading sprites
-	display.DrawProgressBar(0, 110, 127, 10, 0)
+	// Load sprites
 	sprites := make(map[string]image.Image, len(SPRITE_LIST))
 	for _, key := range SPRITE_LIST {
 
@@ -209,28 +207,42 @@ func main() {
 		}
 		sprites[key] = loaded
 	}
-	display.DrawProgressBar(0, 110, 127, 10, 1)
-
-	time.Sleep(time.Second)
-	display.Clear(sh1107.Black)
-	display.Render()
 
 	// Initialize menu system
-	menus := menu.Init(ctx, display, sprites, modem, player, global_quit, keypadEvents)
-
-	// Configure storage
-	misc.GlobalStorage = menus.GlobalStorage
+	menus := menu.Init(ctx, display, sprites, modem, player, global_quit, keypadEvents, database)
 
 	// Setup global required keys
-	menus.GlobalStorage["DebugMode"] = (DEBUG_MODE == "true")
-	menus.GlobalStorage["CanVibrate"] = true
-	menus.GlobalStorage["CanRing"] = true
-	menus.GlobalStorage["BeepOnly"] = false
-	menus.GlobalStorage["InitialKey"] = ' '
-	menus.GlobalStorage["BatteryOK"] = true
-	menus.GlobalStorage["BatteryVoltage"] = ""
-	menus.GlobalStorage["BatteryPercent"] = 0
-	menus.GlobalStorage["BatteryScaledPercent"] = 0
+	menus.Set("DebugMode", (DEBUG_MODE == "true"))
+	menus.Set("FirmwareVersion", FW_VERSION)
+	menus.SetOrCreate("CanVibrate", false)
+	menus.SetOrCreate("CanRing", false)
+	menus.SetOrCreate("BeepOnly", false)
+	menus.Set("InitialKey", ' ')
+	menus.Set("BatteryOK", true)
+	menus.Set("BatteryVoltage", "")
+	menus.Set("BatteryPercent", 0)
+	menus.Set("BatteryScaledPercent", 0)
+
+	// Load fonts
+	display.Load_Font_Time()
+	display.Load_Font8_Bold()
+	display.Load_Font8_Normal()
+	display.Load_Font16()
+
+	// Play boot chime
+	if DEBUG_MODE != "true" {
+		if menus.Get("CanRing").(bool) {
+			go misc.PlayBoot(player, ctx)
+		}
+		time.Sleep(4 * time.Second)
+	}
+
+	// Show version info
+	if DEBUG_MODE == "true" {
+		display.DrawTextAligned(64, 20, display.Use_Font8_Bold(), "DEBUG MODE", false, sh1107.AlignCenter, sh1107.AlignCenter)
+	}
+	display.DrawTextAligned(64, 82, display.Use_Font8_Normal(), "v"+FW_VERSION, false, sh1107.AlignCenter, sh1107.AlignCenter)
+	display.Render()
 
 	// Set initial WiFi status values
 	connected, ssid, strength, ipaddr := misc.GetWiFiStatus()
@@ -238,8 +250,25 @@ func main() {
 	menus.Set("WiFi_SSID", ssid)
 	menus.Set("WiFi_Strength", strength)
 	menus.Set("WiFi_IP", ipaddr)
+	menus.Set("NetworkAlive", false)
 
-	// Configure WiFi status thread
+	// Update network connectivity state
+	go func() {
+
+		// Check if we have working connectivity on boot
+		menus.Set("NetworkAlive", misc.CheckConnectivity(ctx))
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Minute):
+				menus.Set("NetworkAlive", misc.CheckConnectivity(ctx))
+			}
+		}
+	}()
+
+	// Update WiFi state
 	go func() {
 		for {
 			select {
@@ -275,7 +304,7 @@ func main() {
 					menus.Timers["keypad"].Restart()
 
 				case <-modem.CallErrorChan:
-					log.Println("⚠️ Call failed!")
+					log.Println("⚠️ Call failed")
 					go menus.RenderAlert("alert", []string{"Call", "failed."})
 					menus.Timers["oled"].Restart()
 					menus.Timers["keypad"].Restart()
@@ -343,6 +372,12 @@ func main() {
 		}
 	}()
 
+	// Show alert if there's something wrong with the SIM state
+	if modem != nil && !modem.SimCardInserted {
+		menus.RenderAlert("prohibited", []string{"No SIM", "card", "inserted."})
+		time.Sleep(5 * time.Second)
+	}
+
 	// Configure power event handlers
 	go func() {
 		for {
@@ -371,9 +406,14 @@ func main() {
 		}
 	}()
 
+	// Persist screen for a moment
+	time.Sleep(time.Second)
+	display.Clear(sh1107.Black)
+	display.Render()
+
 	// Configure timers
 	menus.Timers["oled"] = timers.New(ctx, 10*time.Second, false, func() {
-		if !menus.GlobalStorage["DebugMode"].(bool) {
+		if !menus.Get("DebugMode").(bool) {
 			menus.Push("screensaver")
 		}
 	})
@@ -395,6 +435,8 @@ func main() {
 	menus.Register("very_low_battery", menus.NewVeryLowBatteryAlert())
 	menus.Register("calculator", menus.NewCalculatorMenu())
 	menus.Register("selector", menus.NewSelector())
+	menus.Register("settings", menus.NewSettingsMenu())
+	menus.Register("phonebook", menus.NewPhonebookMenu())
 
 	// Run home menu
 	menus.Push("home")

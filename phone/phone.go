@@ -46,12 +46,12 @@ type Modem struct {
 	SignalStrength    int
 	Carrier           string // i.e. T-Mobile, Verizon, AT&T, Fi
 	DataEnabled       bool
+	DataConnected     bool
 	NetworkGeneration string // 2g/3g/4g/negotiating
 	Connected         bool
-
-	gatheredRingData bool
-	batteryWindow    []int
-	FlightMode       bool
+	gatheredRingData  bool
+	batteryWindow     []int
+	FlightMode        bool
 }
 
 func NewModem(port string, baud int) (*Modem, error) {
@@ -65,6 +65,8 @@ func NewModem(port string, baud int) (*Modem, error) {
 		CallState:       &CallState{},
 		Carrier:         "Searching...",
 		Port:            p,
+		DataEnabled:     true,
+		DataConnected:   true, // stub - TODO: check if a wwan0 connection is alive
 		RingingChan:     make(chan bool, 1),
 		CallStartChan:   make(chan bool, 1),
 		CallEndChan:     make(chan bool, 1),
@@ -333,10 +335,7 @@ func (m *Modem) handleSignalStrength(line string) {
 		log.Printf("📶 Signal strength: RSSI=%d, BER=%d", rssi, ber)
 
 		if rssi >= 0 && rssi <= 31 {
-			m.SignalStrength = rssi * 8 / 31
-			if m.SignalStrength > 7 {
-				m.SignalStrength = 7
-			}
+			m.SignalStrength = min(rssi*8/31, 7)
 			m.Connected = true
 		} else {
 			m.SignalStrength = 0
@@ -487,7 +486,6 @@ func (m *Modem) handleConnectionType(line string) {
 	re := regexp.MustCompile(`\+CNSMOD:\s*(\d+),(\d+)`)
 	matches := re.FindStringSubmatch(line)
 	knownGens := map[int]string{
-		0:  "...", // No Service
 		1:  "G",   // 2g (GSM)
 		2:  "G",   // 2g (GPRS)
 		3:  "E",   // 2g (EDGE)
@@ -513,9 +511,11 @@ func (m *Modem) handleConnectionType(line string) {
 		if val, ok := knownGens[gen]; ok {
 			m.NetworkGeneration = val
 			log.Printf("📶 Connected to a %s network", val)
+			m.Connected = true
 		} else {
-			m.NetworkGeneration = "negotiating"
-			m.Carrier = "Searching..."
+			m.NetworkGeneration = ""
+			m.Carrier = "No Service"
+			m.Connected = false
 		}
 	}
 }
@@ -549,10 +549,14 @@ func (m *Modem) handleCMEError(line string) {
 
 		log.Printf("🚫 CME Error: %s", code)
 
-		if code == "10" { // No SIM card
+		switch code {
+		case "10": // No SIM card
 			m.SimCardInserted = false
 			m.NetworkGeneration = ""
 			m.Carrier = "Insert SIM card"
+			log.Printf("🚫 No SIM card inserted!")
+		case "14": // SIM busy (ignore if we're starting up)
+			log.Println("⚠️ SIM card is busy...")
 		}
 	}
 }

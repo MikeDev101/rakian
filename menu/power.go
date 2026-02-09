@@ -94,9 +94,9 @@ func (instance *PowerMenu) handle_selection() {
 		return
 
 	case 1: // Loud mode
-		instance.parent.Set("CanVibrate", true)
-		instance.parent.Set("CanRing", true)
-		instance.parent.Set("BeepOnly", false)
+		instance.parent.Set("CanVibrate", true, true)
+		instance.parent.Set("CanRing", true, true)
+		instance.parent.Set("BeepOnly", false, true)
 		instance.parent.RenderAlert("ok", []string{"Loud", "mode on"})
 
 		go instance.parent.PlayAlert()
@@ -105,9 +105,9 @@ func (instance *PowerMenu) handle_selection() {
 		return
 
 	case 2: // Discreet mode
-		instance.parent.Set("CanVibrate", true)
-		instance.parent.Set("CanRing", true)
-		instance.parent.Set("BeepOnly", true)
+		instance.parent.Set("CanVibrate", true, true)
+		instance.parent.Set("CanRing", true, true)
+		instance.parent.Set("BeepOnly", true, true)
 		instance.parent.RenderAlert("ok", []string{"Discreet", "mode on"})
 
 		go instance.parent.PlayAlert()
@@ -116,9 +116,9 @@ func (instance *PowerMenu) handle_selection() {
 		return
 
 	/* case 3: // Vibrate mode
-	instance.parent.Set("CanVibrate", true)
-	instance.parent.Set("CanRing", false)
-	instance.parent.Set("BeepOnly", false)
+	instance.parent.Set("CanVibrate", true, true)
+	instance.parent.Set("CanRing", false, true)
+	instance.parent.Set("BeepOnly", false, true)
 	instance.parent.RenderAlert("ok", []string{"Vibrate only", "mode on"})
 
 	go func() {
@@ -135,9 +135,9 @@ func (instance *PowerMenu) handle_selection() {
 	return */
 
 	case 3: // 4: // Silent mode
-		instance.parent.Set("CanVibrate", false)
-		instance.parent.Set("CanRing", false)
-		instance.parent.Set("BeepOnly", false)
+		instance.parent.Set("CanVibrate", false, true)
+		instance.parent.Set("CanRing", false, true)
+		instance.parent.Set("BeepOnly", false, true)
 		instance.parent.RenderAlert("ok", []string{"Silent", "mode on"})
 
 		time.Sleep(2 * time.Second)

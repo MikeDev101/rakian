@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,25 +13,33 @@ import (
 )
 
 type Selector struct {
-	ctx         context.Context
-	configured  bool
-	cancelFn    context.CancelFunc
-	parent      *Menu
-	wg          sync.WaitGroup
-	selection   int
-	viewOffset  int
-	title       string
-	buttonlabel string
-	options     [][]string
-	path        []string
-	visibleRows int
+	ctx                        context.Context
+	configured                 bool
+	cancelFn                   context.CancelFunc
+	parent                     *Menu
+	wg                         sync.WaitGroup
+	selection                  int
+	viewOffset                 int
+	title                      string
+	buttonlabel                string
+	options                    [][]string
+	path                       []string
+	allowNumbKeys              bool
+	showPathInTitle            bool
+	showElemNumbersInSelection bool
+	showElemNumberInTitle      bool
+	visibleRows                int
 }
 
 type SelectorArgs struct {
-	VisibleRows int
-	Title       string
-	Options     [][]string
-	ButtonLabel string
+	VisibleRows                int
+	Title                      string
+	Options                    [][]string
+	ButtonLabel                string
+	AllowNumberKeyShortcut     bool
+	ShowElemNumbersInSelection bool
+	ShowElemNumberInTitle      bool
+	ShowPathInTitle            bool
 }
 
 type SelectorReturn struct {
@@ -72,7 +81,13 @@ func (instance *Selector) render() {
 	display.Clear(sh1107.Black)
 
 	font := display.Use_Font8_Normal()
-	display.DrawText(0, 20, font, instance.title, false)
+
+	if instance.showPathInTitle && len(instance.path) > 0 {
+		display.DrawText(0, 20, font, strings.Join(instance.path, "/ "), false)
+
+	} else {
+		display.DrawText(0, 20, font, instance.title, false)
+	}
 
 	current_options := instance.get_current_options()
 
@@ -94,7 +109,17 @@ func (instance *Selector) render() {
 	display.Stroke()
 
 	font = display.Use_Font8_Bold()
+
+	if instance.showElemNumberInTitle {
+		display.DrawTextAligned(128, 20, font, fmt.Sprintf("%d", int(instance.selection+1)), false, sh1107.AlignLeft, sh1107.AlignNone)
+	}
+
 	for i, opt := range current_options[start:end] {
+
+		if instance.showElemNumbersInSelection {
+			opt = fmt.Sprintf("%d. %s", start+i+1, opt)
+		}
+
 		y := 40 + i*20 // Adjust for font height and spacing
 		if start+i == int(instance.selection) {
 			// Draw selection highlight box
@@ -140,6 +165,12 @@ func (instance *Selector) ConfigureWithArgs(args ...any) {
 	instance.options = selector_args.Options
 	instance.buttonlabel = selector_args.ButtonLabel
 	instance.visibleRows = selector_args.VisibleRows
+	instance.allowNumbKeys = selector_args.AllowNumberKeyShortcut
+	instance.showPathInTitle = selector_args.ShowPathInTitle
+	instance.showElemNumbersInSelection = selector_args.ShowElemNumbersInSelection
+	instance.showElemNumberInTitle = selector_args.ShowElemNumberInTitle
+
+	// Reset selection
 	instance.path = []string{}
 
 	// Reset context
@@ -185,6 +216,7 @@ func (instance *Selector) Run() {
 							log.Println("Selection: ", current_options[instance.selection])
 							instance.render()
 						}
+
 					case 'S':
 						go instance.parent.PlayKey()
 
@@ -240,11 +272,16 @@ func (instance *Selector) Run() {
 
 					case 'P':
 						go instance.parent.PlayKey()
-						go instance.parent.Pop()
+						go instance.parent.Push("power")
 						return
 
 					default:
 						go instance.parent.PlayKey()
+
+						// Allow number key shortcut if it is enabled
+						if !instance.allowNumbKeys {
+							continue
+						}
 
 						// If key is a number in range of options, select it
 						if evt.Key > '0' && evt.Key <= '9' {

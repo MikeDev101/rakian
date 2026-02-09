@@ -3,6 +3,7 @@ module menu
 go 1.25.2
 
 replace (
+	db => ../db
 	keypad => ../keypad
 	misc => ../misc
 	phone => ../phone
@@ -12,6 +13,8 @@ replace (
 )
 
 require (
+	db v0.0.0-00010101000000-000000000000
+	gorm.io/gorm v1.31.1
 	keypad v0.0.0-00010101000000-000000000000
 	misc v0.0.0-00010101000000-000000000000
 	phone v0.0.0-00010101000000-000000000000
@@ -26,11 +29,14 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/sergeymakinen/go-bmp v1.0.0 // indirect
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07 // indirect
 	github.com/warthog618/sms v0.3.0 // indirect
 	golang.org/x/image v0.35.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 	periph.io/x/conn/v3 v3.7.2 // indirect
 	periph.io/x/host/v3 v3.8.5 // indirect
 )

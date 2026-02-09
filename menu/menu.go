@@ -7,11 +7,14 @@ import (
 	"sync"
 	"time"
 
+	"db"
 	"keypad"
 	"phone"
 	"sh1107"
 	"timers"
 	"tones"
+
+	"gorm.io/gorm"
 )
 
 type MenuInstance interface {
@@ -35,13 +38,13 @@ type Menu struct {
 	KeypadEvents  <-chan *keypad.KeypadEvent
 	Timers        map[string]*timers.ResettableTimer
 	Player        *tones.Tones
-	GlobalStorage map[string]any
+	GlobalStorage *sync.Map
+	PersistStore  *gorm.DB
 
 	GlobalQuit func(uint8)
 
-	lock        sync.RWMutex
-	storageLock sync.Mutex
-	masked      bool
+	lock   sync.RWMutex
+	masked bool
 }
 
 // Mask sets a flag that prevents any menus from being pushed or popped.
@@ -79,7 +82,7 @@ func (m *Menu) run(index int) {
 	m.CurrentMenu = m.Stack[index]
 
 	go func() {
-		defer func() {
+		/*defer func() {
 			if r := recover(); r != nil {
 				m.Player.Stop()
 				log.Printf("💥 Recovering from panic crash in goroutine %v", r)
@@ -88,7 +91,7 @@ func (m *Menu) run(index int) {
 				time.Sleep(3 * time.Second)
 				go m.ToStart()
 			}
-		}()
+		}()*/
 
 		m.CurrentMenu.Run()
 	}()
@@ -321,19 +324,55 @@ func (m *Menu) PopWithArgs(args ...any) {
 }
 
 func (m *Menu) Get(key string) any {
-	m.storageLock.Lock()
-	defer m.storageLock.Unlock()
-	if value, ok := m.GlobalStorage[key]; !ok {
+	if value, ok := m.GlobalStorage.Load(key); !ok {
 		return nil
 	} else {
 		return value
 	}
 }
 
-func (m *Menu) Set(key string, value any) {
-	m.storageLock.Lock()
-	defer m.storageLock.Unlock()
-	m.GlobalStorage[key] = value
+// SetOrCreate checks if a given key exists in the persistent store.
+// If it does not exist, it creates a new entry with the given value.
+// If it does exist, it loads the existing value into the global storage.
+// This function is thread-safe and can be called from any goroutine.
+func (m *Menu) SetOrCreate(key string, value any) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	var kv *db.KVStore
+	res := m.PersistStore.First(&kv, "key = ?", key)
+	if res.Error != nil && res.Error != gorm.ErrRecordNotFound {
+		panic(res.Error)
+	}
+	if kv == nil || res.RowsAffected == 0 {
+		log.Printf("📑 Creating persist key %s (%v)", key, value)
+		m.GlobalStorage.Store(key, value)
+		m.PersistStore.Create(&db.KVStore{Key: key, Value: value})
+	} else {
+		log.Printf("📑 Loading persist key %s (%v)", key, kv.Value)
+		m.GlobalStorage.Store(key, kv.Value)
+	}
+}
+
+// Set stores a given key-value pair in the global storage.
+// If the persist argument is passed as true, the key-value pair is also stored in the persistent store.
+// This function is thread-safe and can be called from any goroutine.
+//
+// Example:
+//
+// m.Set("myKey", "myValue", true)
+//
+// This will store the key-value pair in the global storage and the persistent store.
+func (m *Menu) Set(key string, value any, persist ...bool) {
+	m.GlobalStorage.Store(key, value)
+	if len(persist) > 0 && persist[0] {
+		m.lock.Lock()
+		defer m.lock.Unlock()
+		log.Printf("📑 Updating persist key %s (%v)", key, value)
+		res := m.PersistStore.Save(&db.KVStore{Key: key, Value: value})
+		if res.Error != nil {
+			panic(res.Error)
+		}
+	}
 }
 
 func (m *Menu) Register(name string, instance MenuInstance) {
@@ -381,6 +420,7 @@ func Init(
 	player *tones.Tones,
 	globalquit func(uint8),
 	keypadevents <-chan *keypad.KeypadEvent,
+	persist *gorm.DB,
 ) *Menu {
 
 	menu_ctx, menu_cancel := context.WithCancel(ctx)
@@ -394,9 +434,10 @@ func Init(
 		KeypadEvents:  keypadevents,
 		Timers:        make(map[string]*timers.ResettableTimer),
 		Player:        player,
-		GlobalStorage: make(map[string]any),
 		GlobalQuit:    globalquit,
 		masked:        false,
+		GlobalStorage: &sync.Map{},
+		PersistStore:  persist,
 	}
 
 	return m

@@ -18,6 +18,7 @@ type RingMenu struct {
 	parent      *Menu
 	wg          sync.WaitGroup
 	batt_flash  bool
+	data_flash  bool
 	render_loop *timers.ResettableTimer
 }
 
@@ -30,7 +31,7 @@ func (m *Menu) NewRingMenu() *RingMenu {
 func (instance *RingMenu) render() {
 	display := instance.parent.Display
 	display.Clear(sh1107.Black)
-	instance.parent.RenderStatusBar(&instance.batt_flash)
+	instance.parent.RenderStatusBar(&instance.batt_flash, &instance.data_flash)
 
 	font := display.Use_Font8_Bold()
 	display.DrawTextAligned(52, 105, font, "Answer", false, sh1107.AlignCenter, sh1107.AlignNone)
@@ -59,9 +60,7 @@ func (instance *RingMenu) Run() {
 	}
 
 	if instance.parent.Get("CanVibrate").(bool) {
-		instance.wg.Add(1)
-		go func() {
-			defer instance.wg.Done()
+		instance.wg.Go(func() {
 			for {
 				select {
 				case <-instance.ctx.Done():
@@ -70,13 +69,11 @@ func (instance *RingMenu) Run() {
 					misc.StartVibrate(instance.parent.Player, instance.ctx)
 				}
 			}
-		}()
+		})
 	}
 
 	if instance.parent.Get("BeepOnly").(bool) {
-		instance.wg.Add(1)
-		go func() {
-			defer instance.wg.Done()
+		instance.wg.Go(func() {
 			for {
 				select {
 				case <-instance.ctx.Done():
@@ -85,12 +82,10 @@ func (instance *RingMenu) Run() {
 					misc.PlayBeep(instance.parent.Player, instance.ctx)
 				}
 			}
-		}()
+		})
 
 	} else if instance.parent.Get("CanRing").(bool) {
-		instance.wg.Add(1)
-		go func() {
-			defer instance.wg.Done()
+		instance.wg.Go(func() {
 			for {
 				select {
 				case <-instance.ctx.Done():
@@ -99,28 +94,53 @@ func (instance *RingMenu) Run() {
 					misc.PlayRingtone(instance.parent.Player, instance.ctx)
 				}
 			}
-		}()
+		})
 	}
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	// Battery icon blinker
+	instance.wg.Go(func() {
+		for {
+			select {
+			case <-instance.ctx.Done():
+				return
+
+			case <-time.After(time.Second):
+				instance.batt_flash = !instance.batt_flash
+			}
+		}
+	})
+
+	// Data icon blinker
+	instance.wg.Go(func() {
 		instance.render()
 		for {
 			select {
 			case <-instance.ctx.Done():
 				return
-			case <-time.After(time.Second):
+
+			case <-time.After(500 * time.Millisecond):
+				instance.data_flash = !instance.data_flash
+			}
+		}
+	})
+
+	// Main render loop
+	instance.wg.Go(func() {
+		for {
+			select {
+			case <-instance.ctx.Done():
+				return
+
+			case <-time.After(100 * time.Millisecond):
 				if instance.parent.Display.IsOn {
 					instance.render()
 				}
 			}
 		}
-	}()
+	})
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	// Input loop
+	instance.wg.Go(func() {
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -158,7 +178,7 @@ func (instance *RingMenu) Run() {
 				}
 			}
 		}
-	}()
+	})
 }
 
 func (instance *RingMenu) Pause() {

@@ -69,6 +69,10 @@ func (instance *HomeSelectionMenu) render() {
 func (instance *HomeSelectionMenu) handle_selection() {
 	go instance.parent.PlayKey()
 	switch instance.selection {
+	case 0: // Phone Book
+		go instance.parent.PopToMenu("phonebook")
+	case 3: // Settings
+		go instance.parent.PopToMenu("settings")
 	case 6: // Calculator
 		go instance.parent.PopToMenu("calculator")
 	default:

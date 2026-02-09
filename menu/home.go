@@ -19,6 +19,7 @@ type HomeMenu struct {
 	parent      *Menu
 	wg          sync.WaitGroup
 	batt_flash  bool
+	data_flash  bool
 	render_loop *timers.ResettableTimer
 }
 
@@ -31,9 +32,9 @@ func (m *Menu) NewHomeMenu() *HomeMenu {
 func (instance *HomeMenu) render() {
 	display := instance.parent.Display
 	display.Clear(sh1107.Black)
-	instance.parent.RenderStatusBar(&instance.batt_flash)
+	instance.parent.RenderStatusBar(&instance.batt_flash, &instance.data_flash)
 
-	font := display.Use_Font8_Normal()
+	font := display.Use_Font16()
 
 	now := time.Now().In(time.Local)
 
@@ -47,7 +48,7 @@ func (instance *HomeMenu) render() {
 		hour = 12
 	}
 
-	display.DrawTextAligned(102, 21, font, fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm), false, sh1107.AlignLeft, sh1107.AlignNone)
+	display.DrawTextAligned(60, 45, font, fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm), false, sh1107.AlignCenter, sh1107.AlignNone)
 
 	font = display.Use_Font8_Bold()
 	display.DrawTextAligned(64, 105, font, "Menu", false, sh1107.AlignCenter, sh1107.AlignNone)
@@ -60,27 +61,26 @@ func (instance *HomeMenu) render() {
 		carrier_label = "Airplane mode"
 
 	} else if !instance.parent.Modem.SimCardInserted {
-		carrier_label = "No SIM card installed"
+		carrier_label = "Insert SIM card"
 
 	} else {
 		carrier_label = instance.parent.Modem.Carrier
-		if instance.parent.Modem.NetworkGeneration != "" {
-			carrier_label += " (" + instance.parent.Modem.NetworkGeneration + ")"
-		}
 	}
 
-	display.DrawText(
-		0,
-		40,
+	display.DrawTextAligned(
+		64,
+		65,
 		font,
 		carrier_label,
 		false,
+		sh1107.AlignCenter,
+		sh1107.AlignNone,
 	)
 
-	if instance.parent.GlobalStorage["WiFi_Connected"].(bool) {
+	if instance.parent.Get("WiFi_Connected").(bool) {
 		font = display.Use_Font8_Normal()
-		display.DrawText(0, 60, font, instance.parent.GlobalStorage["WiFi_IP"].(string), false)
-		display.DrawText(0, 50, font, instance.parent.GlobalStorage["WiFi_SSID"].(string), false)
+		display.DrawTextAligned(64, 75, font, instance.parent.Get("WiFi_SSID").(string), false, sh1107.AlignCenter, sh1107.AlignNone)
+		display.DrawTextAligned(64, 85, font, instance.parent.Get("WiFi_IP").(string), false, sh1107.AlignCenter, sh1107.AlignNone)
 	}
 
 	display.Render()
@@ -102,25 +102,50 @@ func (instance *HomeMenu) Run() {
 		panic("Attempted to call (*HomeMenu).Run() before (*HomeMenu).Configure()!")
 	}
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	// Battery icon blinker
+	instance.wg.Go(func() {
+		for {
+			select {
+			case <-instance.ctx.Done():
+				return
+
+			case <-time.After(time.Second):
+				instance.batt_flash = !instance.batt_flash
+			}
+		}
+	})
+
+	// Data icon blinker
+	instance.wg.Go(func() {
 		instance.render()
 		for {
 			select {
 			case <-instance.ctx.Done():
 				return
-			case <-time.After(time.Second):
+
+			case <-time.After(500 * time.Millisecond):
+				instance.data_flash = !instance.data_flash
+			}
+		}
+	})
+
+	// Main render loop
+	instance.wg.Go(func() {
+		for {
+			select {
+			case <-instance.ctx.Done():
+				return
+
+			case <-time.After(100 * time.Millisecond):
 				if instance.parent.Display.IsOn {
 					instance.render()
 				}
 			}
 		}
-	}()
+	})
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	// Input loop
+	instance.wg.Go(func() {
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -154,14 +179,14 @@ func (instance *HomeMenu) Run() {
 						// TODO: cycle between different home menus
 					case 'C':
 					default:
-						instance.parent.GlobalStorage["InitialKey"] = evt.Key
+						instance.parent.Set("InitialKey", evt.Key)
 						go instance.parent.Push("dialer")
 						return
 					}
 				}
 			}
 		}
-	}()
+	})
 }
 
 func (instance *HomeMenu) Pause() {
