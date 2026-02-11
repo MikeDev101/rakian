@@ -17,8 +17,8 @@ type PowerMenu struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
-	selection  uint8
-	viewOffset uint8
+	selection  int
+	viewOffset int
 	options    []string
 }
 
@@ -170,10 +170,24 @@ func (instance *PowerMenu) handle_selection() {
 			msg = append([]string{"Entering"}, msg...)
 		}
 
-		go modem.ToggleFlightMode()
 		instance.parent.RenderAlert("ok", msg)
-
 		go instance.parent.PlayAlert()
+
+		go modem.ToggleFlightMode()
+
+		// Don't lockout ourselves if we're in debug mode
+		if !instance.parent.Get("DebugMode").(bool) {
+			wifi_on, wifi_err := instance.parent.NetworkManager.GetPropertyWirelessEnabled()
+			if wifi_err != nil {
+				panic(wifi_err)
+			}
+			if wifi_on {
+				instance.parent.NetworkManager.SetPropertyWirelessEnabled(false)
+			} else {
+				instance.parent.NetworkManager.SetPropertyWirelessEnabled(true)
+			}
+		}
+
 		time.Sleep(2 * time.Second)
 		go instance.parent.Pop()
 		return
@@ -218,15 +232,19 @@ func (instance *PowerMenu) Run() {
 
 					switch evt.Key {
 					case 'U':
-						if instance.selection > 0 {
+						if instance.selection == 0 {
+							instance.selection = len(instance.options) - 1
+						} else if instance.selection > 0 {
 							instance.selection -= 1
-							instance.render()
 						}
+						instance.render()
 					case 'D':
-						if instance.selection < uint8(len(instance.options)-1) {
+						if instance.selection < len(instance.options)-1 {
 							instance.selection += 1
-							instance.render()
+						} else if instance.selection == len(instance.options)-1 {
+							instance.selection = 0
 						}
+						instance.render()
 					case 'S':
 						go instance.handle_selection()
 						return

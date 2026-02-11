@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sh1107"
 	"time"
+
+	"github.com/Wifx/gonetworkmanager/v3"
 )
 
 func (m *Menu) PlayAlert() {
@@ -162,31 +164,54 @@ func (m *Menu) RenderStatusBar(batt_flash *bool, data_flash *bool) {
 
 	// === STAGE 2: WIFI STATUS ===
 
+	network_enabled, err := m.NetworkManager.GetPropertyNetworkingEnabled()
+	if err != nil {
+		panic(err)
+	}
+
+	wifi_enabled, err := m.NetworkManager.GetPropertyWirelessEnabled()
+	if err != nil {
+		panic(err)
+	}
+
+	network_status, err := m.NetworkManager.GetPropertyState()
+	if err != nil {
+		panic(err)
+	}
+
 	// Check if the network is alive
 	netstate_width := 0
-	if !m.Get("NetworkAlive").(bool) {
 
-		// If not alive, show the no internet icon
-		netstate_width, _ = m.Display.GetImageBounds(m.Sprites["wifi/no_internet"])
-		m.Display.DrawImage(m.Sprites["wifi/no_internet"], multi_render_width, 20)
+	if network_enabled && wifi_enabled {
+		if network_status == gonetworkmanager.NmStateConnectedLocal ||
+			network_status == gonetworkmanager.NmStateConnectedSite {
+			netstate_width, _ = m.Display.GetImageBounds(m.Sprites["wifi/no_internet"])
+			m.Display.DrawImage(m.Sprites["wifi/no_internet"], multi_render_width, 20)
+		}
 	}
 
 	// Update the counter
 	multi_render_width += netstate_width + multi_render_padding
 
 	// Show the WiFi status icon
-	wifi_icon_target := "wifi/connecting"
-	if m.Get("WiFi_Connected").(bool) {
-		wifi_icon_target = fmt.Sprintf("wifi/%d", m.Get("WiFi_Strength").(int))
-	} else {
-		wifi_icon_target = "wifi/no_networks"
+	var wifi_icon_target string
+
+	if network_enabled && wifi_enabled {
+		if m.Get("WiFi_Connected").(bool) {
+			wifi_icon_target = fmt.Sprintf("wifi/%d", m.Get("WiFi_Strength").(int))
+		} else {
+			wifi_icon_target = "wifi/no_networks"
+		}
 	}
 
 	// Get the width of the wifi icon
-	wifi_icon_width, _ := m.Display.GetImageBounds(m.Sprites[wifi_icon_target])
+	wifi_icon_width := 0
+	if network_enabled && wifi_icon_target != "" {
+		wifi_icon_width, _ = m.Display.GetImageBounds(m.Sprites[wifi_icon_target])
 
-	// Draw the icon
-	m.Display.DrawImage(m.Sprites[wifi_icon_target], multi_render_width, 20)
+		// Draw the icon
+		m.Display.DrawImage(m.Sprites[wifi_icon_target], multi_render_width, 20)
+	}
 
 	// Update the counter
 	multi_render_width += wifi_icon_width + multi_render_padding

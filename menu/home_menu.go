@@ -115,15 +115,19 @@ func (instance *HomeSelectionMenu) Run() {
 
 					switch evt.Key {
 					case 'U':
-						if instance.selection > 0 {
+						if instance.selection == 0 {
+							instance.selection = len(instance.options) - 1
+						} else if instance.selection > 0 {
 							instance.selection -= 1
-							instance.render()
 						}
+						instance.render()
 					case 'D':
 						if instance.selection < len(instance.options)-1 {
 							instance.selection += 1
-							instance.render()
+						} else if instance.selection == len(instance.options)-1 {
+							instance.selection = 0
 						}
+						instance.render()
 					case 'S':
 						go instance.handle_selection()
 						return

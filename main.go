@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"db"
 	"keypad"
 	"menu"
@@ -19,13 +21,14 @@ import (
 	"timers"
 	"tones"
 
+	"github.com/Wifx/gonetworkmanager/v3"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
 // go build -ldflags "-X 'main.DEBUG_MODE=false'" .
 var DEBUG_MODE string = "true"
-var FW_VERSION string = "0.1.14 (2.8.2026)"
+var FW_VERSION string = "0.1.16 (2.11.2026)"
 var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
 var SPRITE_LIST = []string{
 
@@ -119,8 +122,17 @@ func exit() {
 func main() {
 
 	// Handle system exit
+	defer exit()
+
+	// Setup crash logging in deploy mode
 	if DEBUG_MODE != "true" {
-		defer exit()
+		if f, err := os.OpenFile("crash.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err != nil {
+			log.Println("⚠️ Failed to open crash log:", err)
+		} else {
+			// Redirect stderr to the file to capture panic stack traces
+			// Note: This will also redirect all log.Println output to the file
+			unix.Dup2(int(f.Fd()), int(os.Stderr.Fd()))
+		}
 	}
 
 	// Configure main-level scoped values
@@ -129,6 +141,17 @@ func main() {
 	var DeadBattChan = make(chan bool, 1)
 	var lastLowBattTime time.Time
 	var lastVeryLowBattTime time.Time
+
+	/* Create new instance of gonetworkmanager */
+	nm, err := gonetworkmanager.NewNetworkManager()
+	if err != nil {
+		panic(err)
+	}
+
+	wifi_device, err := nm.GetDeviceByIpIface("wlan0")
+	if err != nil {
+		panic(err)
+	}
 
 	// Init db
 	database, err := gorm.Open(sqlite.Open("/root/rakian/kvstore.db"), &gorm.Config{})
@@ -209,7 +232,18 @@ func main() {
 	}
 
 	// Initialize menu system
-	menus := menu.Init(ctx, display, sprites, modem, player, global_quit, keypadEvents, database)
+	menus := menu.Init(
+		ctx,
+		display,
+		sprites,
+		modem,
+		player,
+		global_quit,
+		keypadEvents,
+		database,
+		nm,
+		wifi_device,
+	)
 
 	// Setup global required keys
 	menus.Set("DebugMode", (DEBUG_MODE == "true"))
@@ -231,10 +265,10 @@ func main() {
 
 	// Play boot chime
 	if DEBUG_MODE != "true" {
-		if menus.Get("CanRing").(bool) {
+		if menus.Get("CanRing").(bool) && !menus.Get("BeepOnly").(bool) {
 			go misc.PlayBoot(player, ctx)
 		}
-		time.Sleep(4 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 
 	// Show version info
@@ -244,29 +278,26 @@ func main() {
 	display.DrawTextAligned(64, 82, display.Use_Font8_Normal(), "v"+FW_VERSION, false, sh1107.AlignCenter, sh1107.AlignCenter)
 	display.Render()
 
+	if DEBUG_MODE != "true" {
+		time.Sleep(2 * time.Second)
+	}
+
+	// Failsafe
+	enabled, _ := nm.GetPropertyWirelessEnabled()
+	if !enabled {
+		log.Println("WiFi was off, emergency re-enabling...")
+		nm.SetPropertyWirelessEnabled(true)
+		menus.RenderAlert("ok", []string{"WiFi", "failsafe", "triggered!"})
+		go menus.PlayAlert()
+		time.Sleep(5 * time.Second) // Give it a moment to breathe
+	}
+
 	// Set initial WiFi status values
 	connected, ssid, strength, ipaddr := misc.GetWiFiStatus()
 	menus.Set("WiFi_Connected", connected)
 	menus.Set("WiFi_SSID", ssid)
 	menus.Set("WiFi_Strength", strength)
 	menus.Set("WiFi_IP", ipaddr)
-	menus.Set("NetworkAlive", false)
-
-	// Update network connectivity state
-	go func() {
-
-		// Check if we have working connectivity on boot
-		menus.Set("NetworkAlive", misc.CheckConnectivity(ctx))
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(1 * time.Minute):
-				menus.Set("NetworkAlive", misc.CheckConnectivity(ctx))
-			}
-		}
-	}()
 
 	// Update WiFi state
 	go func() {
@@ -378,6 +409,19 @@ func main() {
 		time.Sleep(5 * time.Second)
 	}
 
+	// Persist screen for a moment
+	time.Sleep(time.Second)
+	display.Clear(sh1107.Black)
+	display.Render()
+
+	// Configure timers
+	menus.Timers["oled"] = timers.New(ctx, 10*time.Second, false, func() {
+		menus.Push("screensaver")
+	})
+	menus.Timers["keypad"] = timers.New(ctx, 5*time.Second, false, func() {
+		misc.KeyLightsOff()
+	})
+
 	// Configure power event handlers
 	go func() {
 		for {
@@ -405,21 +449,6 @@ func main() {
 			}
 		}
 	}()
-
-	// Persist screen for a moment
-	time.Sleep(time.Second)
-	display.Clear(sh1107.Black)
-	display.Render()
-
-	// Configure timers
-	menus.Timers["oled"] = timers.New(ctx, 10*time.Second, false, func() {
-		if !menus.Get("DebugMode").(bool) {
-			menus.Push("screensaver")
-		}
-	})
-	menus.Timers["keypad"] = timers.New(ctx, 5*time.Second, false, func() {
-		misc.KeyLightsOff()
-	})
 
 	// Register menus
 	menus.Register("power", menus.NewPowerMenu())

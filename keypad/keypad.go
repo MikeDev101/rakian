@@ -83,7 +83,8 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 	rowPins := [4]*PinIn{
 		{"GPIO7", gpioreg.ByName("GPIO7")},
 		{"GPIO8", gpioreg.ByName("GPIO8")},
-		{"GPIO25", gpioreg.ByName("GPIO25")},
+		// {"GPIO25", gpioreg.ByName("GPIO25")},
+		{"GPIP12", gpioreg.ByName("GPIO12")},
 		{"GPIO24", gpioreg.ByName("GPIO24")},
 	}
 	colPins := [5]*PinOut{
@@ -174,7 +175,7 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 								if rowPin.Read() == gpio.High {
 									if debounceRead(ctx, rowPin, gpio.High, 25*time.Millisecond) {
 										if faultyReads > 5 {
-											log.Printf("⚠️ Too many faulty reads, suspected short on pins %s and %s", lastRow.Label, lastCol.Label)
+											log.Printf("⚠️ Too many faulty reads, suspected short on pins %s and %s (%d:%d)", rowPin.Label, colPin.Label, rowIdx, colIdx)
 											colPin.Out(gpio.Low)
 											time.Sleep(50 * time.Millisecond)
 											continue
@@ -183,7 +184,7 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 										lastCol = colPin
 										lastRune = KeyMap[[2]int{rowIdx, colIdx}]
 										if lastRune == 0 {
-											log.Printf("⚠️ Invalid keypress detected (faulty keypad? short on pins %s and %s), attempting to recover...", lastRow.Label, lastCol.Label)
+											log.Printf("⚠️ Invalid keypress detected (faulty keypad? short on pins %s and %s (%d:%d)), attempting to recover...", rowPin.Label, colPin.Label, rowIdx, colIdx)
 											colPin.Out(gpio.Low)
 											faultyReads++
 											time.Sleep(50 * time.Millisecond)
@@ -193,6 +194,7 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 											log.Printf("⚠️ Recovered from keypad fault")
 											faultyReads = 0
 										}
+										log.Printf("⌨️ Keypress detected on pins %s %s (%d:%d - %c)", rowPin.Label, colPin.Label, rowIdx, colIdx, lastRune)
 										eventsChan <- &KeypadEvent{
 											State:    true,
 											Key:      lastRune,

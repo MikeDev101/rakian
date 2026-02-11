@@ -15,7 +15,9 @@ replace (
 
 require (
 	db v0.0.0-00010101000000-000000000000
+	github.com/Wifx/gonetworkmanager/v3 v3.2.0
 	github.com/glebarez/sqlite v1.11.0
+	golang.org/x/sys v0.41.0
 	gorm.io/gorm v1.31.1
 	keypad v0.0.0-00010101000000-000000000000
 	menu v0.0.0-00010101000000-000000000000
@@ -33,8 +35,9 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
-	github.com/google/uuid v1.3.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
@@ -44,7 +47,6 @@ require (
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07 // indirect
 	github.com/warthog618/sms v0.3.0 // indirect
 	golang.org/x/image v0.35.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect

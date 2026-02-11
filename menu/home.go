@@ -31,28 +31,29 @@ func (m *Menu) NewHomeMenu() *HomeMenu {
 
 func (instance *HomeMenu) render() {
 	display := instance.parent.Display
+
 	display.Clear(sh1107.Black)
+
+	// Render status bar
 	instance.parent.RenderStatusBar(&instance.batt_flash, &instance.data_flash)
 
-	font := display.Use_Font16()
-
+	// Read clock
 	now := time.Now().In(time.Local)
-
 	am_pm := "AM"
 	if now.Hour() >= 12 {
 		am_pm = "PM"
 	}
-
 	hour := now.Hour() % 12
 	if hour == 0 {
 		hour = 12
 	}
 
-	display.DrawTextAligned(60, 45, font, fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm), false, sh1107.AlignCenter, sh1107.AlignNone)
+	// Draw clock
+	font := display.Use_Font16()
+	display.DrawTextAligned(64, 55, font, fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm), false, sh1107.AlignCenter, sh1107.AlignNone)
 
-	font = display.Use_Font8_Bold()
-	display.DrawTextAligned(64, 105, font, "Menu", false, sh1107.AlignCenter, sh1107.AlignNone)
-
+	// Draw carrier info
+	font = display.Use_Font8_Normal()
 	var carrier_label string
 	if instance.parent.Modem == nil {
 		carrier_label = "No service"
@@ -66,22 +67,11 @@ func (instance *HomeMenu) render() {
 	} else {
 		carrier_label = instance.parent.Modem.Carrier
 	}
+	display.DrawTextAligned(64, 75, font, carrier_label, false, sh1107.AlignCenter, sh1107.AlignNone)
 
-	display.DrawTextAligned(
-		64,
-		65,
-		font,
-		carrier_label,
-		false,
-		sh1107.AlignCenter,
-		sh1107.AlignNone,
-	)
-
-	if instance.parent.Get("WiFi_Connected").(bool) {
-		font = display.Use_Font8_Normal()
-		display.DrawTextAligned(64, 75, font, instance.parent.Get("WiFi_SSID").(string), false, sh1107.AlignCenter, sh1107.AlignNone)
-		display.DrawTextAligned(64, 85, font, instance.parent.Get("WiFi_IP").(string), false, sh1107.AlignCenter, sh1107.AlignNone)
-	}
+	// Draw menu hint
+	font = display.Use_Font8_Bold()
+	display.DrawTextAligned(64, 105, font, "Menu", false, sh1107.AlignCenter, sh1107.AlignNone)
 
 	display.Render()
 }

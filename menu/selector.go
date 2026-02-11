@@ -24,6 +24,7 @@ type Selector struct {
 	buttonlabel                string
 	options                    [][]string
 	path                       []string
+	persistLastState           bool
 	allowNumbKeys              bool
 	showPathInTitle            bool
 	showElemNumbersInSelection bool
@@ -32,6 +33,7 @@ type Selector struct {
 }
 
 type SelectorArgs struct {
+	PersistLastState           bool
 	VisibleRows                int
 	Title                      string
 	Options                    [][]string
@@ -103,6 +105,9 @@ func (instance *Selector) render() {
 	if int(end) > len(current_options) {
 		end = len(current_options)
 	}
+	if start > end {
+		start = end
+	}
 	display.SetColor(sh1107.White)
 	display.SetLineWidth(1)
 	display.DrawLine(0, 33, 127, 33)
@@ -169,9 +174,14 @@ func (instance *Selector) ConfigureWithArgs(args ...any) {
 	instance.showPathInTitle = selector_args.ShowPathInTitle
 	instance.showElemNumbersInSelection = selector_args.ShowElemNumbersInSelection
 	instance.showElemNumberInTitle = selector_args.ShowElemNumberInTitle
+	instance.persistLastState = selector_args.PersistLastState
 
-	// Reset selection
-	instance.path = []string{}
+	// Reset selection if persistLastState is false
+	if !instance.persistLastState {
+		instance.path = []string{}
+		instance.selection = 0
+		instance.viewOffset = 0
+	}
 
 	// Reset context
 	instance.Configure()
@@ -183,9 +193,7 @@ func (instance *Selector) Run() {
 	}
 
 	instance.render()
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	instance.wg.Go(func() {
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -204,18 +212,22 @@ func (instance *Selector) Run() {
 					switch evt.Key {
 					case 'U':
 						go instance.parent.PlayKey()
-						if instance.selection > 0 {
+						if instance.selection == 0 {
+							instance.selection = len(current_options) - 1
+						} else if instance.selection > 0 {
 							instance.selection -= 1
-							log.Println("Selection: ", current_options[instance.selection])
-							instance.render()
 						}
+						log.Println("Selection: ", current_options[instance.selection])
+						instance.render()
 					case 'D':
 						go instance.parent.PlayKey()
 						if instance.selection < len(current_options)-1 {
 							instance.selection += 1
-							log.Println("Selection: ", current_options[instance.selection])
-							instance.render()
+						} else if instance.selection == len(current_options)-1 {
+							instance.selection = 0
 						}
+						log.Println("Selection: ", current_options[instance.selection])
+						instance.render()
 
 					case 'S':
 						go instance.parent.PlayKey()
@@ -240,16 +252,15 @@ func (instance *Selector) Run() {
 							}
 						}
 
-						instance.path = append(instance.path, selected_option)
-
 						if has_children {
 							instance.selection = 0
 							instance.viewOffset = 0
+							instance.path = append(instance.path, selected_option)
 							instance.render()
 						} else {
 							// Return to the previous menu with our chosen selection
 							go instance.parent.PopWithArgs(&SelectorReturn{
-								SelectionPath: instance.path,
+								SelectionPath: append(instance.path, selected_option),
 							})
 							return
 						}
@@ -263,6 +274,10 @@ func (instance *Selector) Run() {
 							instance.viewOffset = 0
 							instance.render()
 						} else {
+							instance.selection = 0
+							instance.viewOffset = 0
+							instance.path = []string{}
+
 							// Return to the previous menu with an empty selection
 							go instance.parent.PopWithArgs(&SelectorReturn{
 								SelectionPath: []string{},
@@ -305,15 +320,14 @@ func (instance *Selector) Run() {
 									}
 								}
 
-								instance.path = append(instance.path, selected_option)
-
 								if has_children {
 									instance.selection = 0
 									instance.viewOffset = 0
+									instance.path = append(instance.path, selected_option)
 									instance.render()
 								} else {
 									go instance.parent.PopWithArgs(&SelectorReturn{
-										SelectionPath: instance.path,
+										SelectionPath: append(instance.path, selected_option),
 									})
 									return
 								}
@@ -323,7 +337,7 @@ func (instance *Selector) Run() {
 				}
 			}
 		}
-	}()
+	})
 }
 
 func (instance *Selector) Pause() {
@@ -340,14 +354,16 @@ func (instance *Selector) Stop() {
 		log.Println("⚠️ Selector stop timed out — goroutines may be stuck")
 		// Optional: escalate here
 	} else {
-		go instance.cleanup()
+		instance.cleanup()
 	}
 }
 
 func (instance *Selector) cleanup() {
-	instance.selection = 0
-	instance.viewOffset = 0
 	instance.title = ""
 	instance.options = [][]string{}
-	instance.path = []string{}
+	if !instance.persistLastState {
+		instance.selection = 0
+		instance.viewOffset = 0
+		instance.path = []string{}
+	}
 }

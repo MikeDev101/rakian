@@ -14,6 +14,7 @@ import (
 	"timers"
 	"tones"
 
+	"github.com/Wifx/gonetworkmanager/v3"
 	"gorm.io/gorm"
 )
 
@@ -32,14 +33,16 @@ type Menu struct {
 	GlobalContext context.Context
 	GlobalCancel  context.CancelFunc
 
-	Display       *sh1107.SH1107
-	Sprites       map[string]image.Image
-	Modem         *phone.Modem
-	KeypadEvents  <-chan *keypad.KeypadEvent
-	Timers        map[string]*timers.ResettableTimer
-	Player        *tones.Tones
-	GlobalStorage *sync.Map
-	PersistStore  *gorm.DB
+	Display        *sh1107.SH1107
+	Sprites        map[string]image.Image
+	Modem          *phone.Modem
+	KeypadEvents   <-chan *keypad.KeypadEvent
+	Timers         map[string]*timers.ResettableTimer
+	Player         *tones.Tones
+	GlobalStorage  *sync.Map
+	PersistStore   *gorm.DB
+	NetworkManager gonetworkmanager.NetworkManager
+	WifiDevice     gonetworkmanager.Device
 
 	GlobalQuit func(uint8)
 
@@ -421,23 +424,27 @@ func Init(
 	globalquit func(uint8),
 	keypadevents <-chan *keypad.KeypadEvent,
 	persist *gorm.DB,
+	nm gonetworkmanager.NetworkManager,
+	wifi_device gonetworkmanager.Device,
 ) *Menu {
 
 	menu_ctx, menu_cancel := context.WithCancel(ctx)
 
 	m := &Menu{
-		GlobalContext: menu_ctx,
-		GlobalCancel:  menu_cancel,
-		Display:       display,
-		Sprites:       sprites,
-		Modem:         modem,
-		KeypadEvents:  keypadevents,
-		Timers:        make(map[string]*timers.ResettableTimer),
-		Player:        player,
-		GlobalQuit:    globalquit,
-		masked:        false,
-		GlobalStorage: &sync.Map{},
-		PersistStore:  persist,
+		GlobalContext:  menu_ctx,
+		GlobalCancel:   menu_cancel,
+		Display:        display,
+		Sprites:        sprites,
+		Modem:          modem,
+		KeypadEvents:   keypadevents,
+		Timers:         make(map[string]*timers.ResettableTimer),
+		Player:         player,
+		GlobalQuit:     globalquit,
+		masked:         false,
+		GlobalStorage:  &sync.Map{},
+		PersistStore:   persist,
+		NetworkManager: nm,
+		WifiDevice:     wifi_device,
 	}
 
 	return m
