@@ -34,11 +34,11 @@ func (instance *RingMenu) render() {
 	instance.parent.RenderStatusBar(&instance.batt_flash, &instance.data_flash)
 
 	font := display.Use_Font8_Bold()
-	display.DrawTextAligned(52, 105, font, "Answer", false, sh1107.AlignCenter, sh1107.AlignNone)
-	display.DrawText(0, 60, font, instance.parent.Modem.CallState.Status, false)
+	display.DrawTextAligned(64, 105, font, "Answer", false, sh1107.AlignCenter, sh1107.AlignNone)
+	display.DrawTextAligned(0, 65, font, instance.parent.Modem.CallState.Status, false, sh1107.AlignRight, sh1107.AlignNone)
 
 	font = display.Use_Font16()
-	display.DrawText(0, 40, font, instance.parent.Modem.CallState.PhoneNumber, false)
+	display.DrawText(0, 45, font, instance.parent.Modem.CallState.PhoneNumber, false)
 
 	display.Render()
 }
@@ -132,9 +132,7 @@ func (instance *RingMenu) Run() {
 				return
 
 			case <-time.After(100 * time.Millisecond):
-				if instance.parent.Display.IsOn {
-					instance.render()
-				}
+				instance.render()
 			}
 		}
 	})
@@ -152,26 +150,17 @@ func (instance *RingMenu) Run() {
 				}
 
 				if evt.State {
-
 					instance.parent.Timers["keypad"].Reset()
 					instance.parent.Timers["oled"].Reset()
 					instance.parent.Display.On()
 					misc.KeyLightsOn()
-					go instance.parent.PlayKey()
-
 					switch evt.Key {
-
-					case 'P':
-						go instance.parent.Push("power")
-						return
-
 					case 'S':
+						go instance.parent.PlayKey()
 						instance.parent.Modem.Answer()
 						return
-
-					case 'U':
-					case 'D':
 					case 'C':
+						go instance.parent.PlayKey()
 						instance.parent.Modem.Hangup()
 						return
 					}

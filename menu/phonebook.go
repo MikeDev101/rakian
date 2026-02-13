@@ -68,7 +68,8 @@ func (instance *PhonebookMenu) Run() {
 		// Start the selector with the base phonebook menu
 		log.Println("📱 Phonebook switching to selector")
 		go instance.parent.PushWithArgs("selector", &SelectorArgs{
-			Title: "Phonebook",
+			Title:          "Phonebook",
+			SelectionClass: "phonebook.main",
 			Options: [][]string{
 				{"Search"},
 				{"Service Numbers"},

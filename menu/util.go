@@ -38,7 +38,7 @@ func (m *Menu) RenderAlert(icon string, status []string) {
 	font := m.Display.Use_Font16()
 	m.Display.Clear(sh1107.Black)
 	if icon != "" {
-		m.Display.DrawImage(m.Sprites[icon], 100, 40)
+		m.Display.DrawImageAligned(m.Sprites[icon], 120, 40, sh1107.AlignLeft, sh1107.AlignBelow)
 	}
 	for i, str := range status {
 		m.Display.DrawText(0, 36+(i*16), font, str, false)
@@ -52,6 +52,13 @@ func (m *Menu) RenderBatteryIcon(flash *bool) {
 			m.Display.DrawImage(m.Sprites["battery/0"], 105, 20)
 		} else {
 			m.Display.DrawImage(m.Sprites["battery/unknown"], 105, 20)
+		}
+
+	} else if m.Get("BatteryCharging").(bool) {
+		if *flash {
+			m.Display.DrawImage(m.Sprites["battery/0"], 105, 20)
+		} else {
+			m.Display.DrawImage(m.Sprites[fmt.Sprintf("battery/%d", m.Get("BatteryScaledPercent").(int))], 105, 20)
 		}
 
 	} else {
@@ -99,12 +106,12 @@ func (m *Menu) RenderStatusBar(batt_flash *bool, data_flash *bool) {
 
 		// == 1.2: NETWORK GENERATION ===
 
-		netgen_font := m.Display.Use_Font8_Bold()
+		/* netgen_font := m.Display.Use_Font8_Bold()
 		netgen_width, _ := m.Display.GetTextBounds(netgen_font, m.Modem.NetworkGeneration)
 		m.Display.DrawTextAligned(multi_render_width, 21, netgen_font, m.Modem.NetworkGeneration, false, sh1107.AlignRight, sh1107.AlignNone)
 
 		// Update the counter
-		multi_render_width += netgen_width + multi_render_padding
+		multi_render_width += netgen_width + multi_render_padding */
 
 		// === 1.3: SIGNAL STATUS ===
 

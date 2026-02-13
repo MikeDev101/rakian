@@ -2,13 +2,13 @@ package menu
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"misc"
 	"sh1107"
-	"timers"
 )
 
 type Screensaver struct {
@@ -18,53 +18,47 @@ type Screensaver struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
-	dx, dy     int
-	x, y       int
-	flip       int
 }
 
 func (m *Menu) NewScreensaver() *Screensaver {
 	return &Screensaver{
 		parent: m,
-		dx:     1,
-		dy:     1,
-		x:      0,
-		y:      20,
-		flip:   sh1107.Normal,
 	}
 }
 
 func (instance *Screensaver) render() {
 	display := instance.parent.Display
-	duck := instance.parent.Sprites["duck"]
-
-	switch {
-	case instance.dx < 0 && instance.dy < 0:
-		instance.flip = sh1107.UpsideDown
-	case instance.dx > 0 && instance.dy < 0:
-		instance.flip = sh1107.FlippedUpsideDown
-	case instance.dx < 0:
-		instance.flip = sh1107.Normal
-	default:
-		instance.flip = sh1107.Flipped
-	}
-
 	display.Clear(sh1107.Black)
-	display.DrawImage(
-		sh1107.FlipImage(duck, instance.flip),
-		instance.x, instance.y,
-	)
-	display.Render()
+	font := display.Use_Font16()
 
-	// Bounce logic
-	instance.x += instance.dx
-	instance.y += instance.dy
-	if instance.x <= 0 || instance.x+duck.Bounds().Max.X >= display.Width {
-		instance.dx = -instance.dx
+	// Draw something
+	// Read clock
+	now := time.Now().In(time.Local)
+	am_pm := "AM"
+	if now.Hour() >= 12 {
+		am_pm = "PM"
 	}
-	if instance.y <= 20 || instance.y+duck.Bounds().Max.Y >= display.Height-5 {
-		instance.dy = -instance.dy
+	hour := now.Hour() % 12
+	if hour == 0 {
+		hour = 12
 	}
+
+	// Print clock
+	clock_str := fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm)
+
+	// Trim leading spaces
+	for clock_str[0] == ' ' {
+		clock_str = clock_str[1:]
+	}
+
+	// Draw clock
+	display.DrawTextAligned(64, 55, font, clock_str, false, sh1107.AlignCenter, sh1107.AlignCenter)
+
+	// Display battery
+	font = display.Use_Font8_Normal()
+	display.DrawTextAligned(64, 75, font, fmt.Sprintf("%d %%", instance.parent.Get("BatteryPercent").(int)), false, sh1107.AlignCenter, sh1107.AlignCenter)
+
+	display.Render()
 }
 
 func (instance *Screensaver) Configure() {
@@ -89,28 +83,43 @@ func (instance *Screensaver) Run() {
 	instance.running = true
 
 	instance.render()
+
+	// Calculate the initial delay to the next minute boundary
+	now := time.Now()
+	next := now.Truncate(time.Minute).Add(time.Minute)
+	delay := next.Sub(now)
+	if instance.parent.DebugMode {
+		log.Printf("⏾ Initial screensaver delay: %s", delay)
+	}
+
 	instance.parent.Display.SetBrightness(0.0)
 	instance.parent.Timers["oled"].Stop()
-	misc.SwitchToPowerSave()
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	// Switch CPU and modem modes
+	misc.SwitchToPowerSaveMode()
+	instance.parent.Modem.SwitchToPowerSaveMode()
+
+	// Start the screensaver loop
+	instance.wg.Go(func() {
 		for {
-			timers.SleepWithContext(time.Millisecond, instance.ctx)
 			select {
 			case <-instance.ctx.Done():
-				misc.SwitchToNormalMode()
 				return
-			default:
+			case <-time.After(delay): // First delay for init
+
+				// Reset the timer to be every minute
+				delay = time.Minute
+
+				// Render frame
+				if instance.parent.DebugMode {
+					log.Println("⏾ Screensaver timer raised")
+				}
 				instance.render()
 			}
 		}
-	}()
+	})
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	instance.wg.Go(func() {
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -119,7 +128,7 @@ func (instance *Screensaver) Run() {
 
 			case evt := <-instance.parent.KeypadEvents:
 				if evt.State {
-
+					misc.SwitchToNormalMode()
 					instance.parent.Timers["keypad"].Restart()
 					instance.parent.Timers["oled"].Restart()
 					instance.parent.Display.On()
@@ -130,7 +139,7 @@ func (instance *Screensaver) Run() {
 				}
 			}
 		}
-	}()
+	})
 }
 
 func (instance *Screensaver) Pause() {
@@ -146,7 +155,14 @@ func (instance *Screensaver) Pause() {
 
 func (instance *Screensaver) Stop() {
 	instance.cancelFn()
+
+	// Switch CPU and modem modes
+	misc.SwitchToNormalMode()
+	instance.parent.Modem.SwitchToNormalMode()
+
+	// Restore brightness
 	instance.parent.Display.SetBrightness(1.0)
+
 	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
 		log.Println("⚠️ Screensaver stop timed out — goroutines may be stuck")
 		// Optional: escalate here

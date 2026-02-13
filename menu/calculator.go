@@ -2,7 +2,9 @@ package menu
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -82,6 +84,13 @@ func (instance *CalculatorMenu) ConfigureWithArgs(args ...any) {
 }
 
 func (instance *CalculatorMenu) compute_displayed() {
+
+	/* TODO:
+	 * - Determine what's a number group and track them for computation
+	 * - Detect if groups of numbers have too many decimal points (there can only be one per group)
+	 * - Detect if numbers are too big to fit in a float
+	 */
+
 	var number_groups = []string{}
 
 	var numbs_valid = "0123456789."
@@ -103,10 +112,102 @@ func (instance *CalculatorMenu) compute_displayed() {
 	instance.calc_displayed = strings.Join(number_groups, " ")
 }
 
+func (instance *CalculatorMenu) evaluate() (float64, error) {
+	expr := string(instance.calc_input)
+	if len(expr) == 0 {
+		return 0, nil
+	}
+
+	// 1. Tokenize
+	var nums []float64
+	var ops []rune
+
+	var currentNum strings.Builder
+	for i, r := range expr {
+		if r == '+' || r == '-' || r == '*' || r == '/' {
+			// Check for negative number at start or after operator
+			if r == '-' && (i == 0 || strings.ContainsRune("+-*/", rune(expr[i-1]))) {
+				currentNum.WriteRune(r)
+				continue
+			}
+
+			if currentNum.Len() > 0 {
+				val, err := strconv.ParseFloat(currentNum.String(), 64)
+				if err != nil {
+					return 0, err
+				}
+				nums = append(nums, val)
+				currentNum.Reset()
+			}
+			ops = append(ops, r)
+		} else {
+			currentNum.WriteRune(r)
+		}
+	}
+	if currentNum.Len() > 0 {
+		val, err := strconv.ParseFloat(currentNum.String(), 64)
+		if err != nil {
+			return 0, err
+		}
+		nums = append(nums, val)
+	}
+
+	if len(nums) == 0 {
+		return 0, nil
+	}
+	// If we have operators but not enough numbers (e.g. "5+")
+	if len(ops) >= len(nums) {
+		ops = ops[:len(nums)-1]
+	}
+
+	// 2. Process * and /
+	var nums2 []float64
+	var ops2 []rune
+
+	nums2 = append(nums2, nums[0])
+	for i := 0; i < len(ops); i++ {
+		op := ops[i]
+		nextNum := nums[i+1]
+
+		if op == '*' || op == '/' {
+			prevNum := nums2[len(nums2)-1]
+			var res float64
+			if op == '*' {
+				res = prevNum * nextNum
+			} else {
+				if nextNum == 0 {
+					return 0, fmt.Errorf("div by zero")
+				}
+				res = prevNum / nextNum
+			}
+			nums2[len(nums2)-1] = res
+		} else {
+			nums2 = append(nums2, nextNum)
+			ops2 = append(ops2, op)
+		}
+	}
+
+	// 3. Process + and -
+	result := nums2[0]
+	for i := 0; i < len(ops2); i++ {
+		op := ops2[i]
+		nextNum := nums2[i+1]
+		if op == '+' {
+			result += nextNum
+		} else {
+			result -= nextNum
+		}
+	}
+
+	return result, nil
+}
+
 func (instance *CalculatorMenu) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*CalculatorMenu).Run() before (*CalculatorMenu).Configure()!")
 	}
+
+	instance.parent.CreateOrLoadPersist("Calc_ExchangeRate", 1.0)
 
 	if instance.process_selection {
 		instance.process_selection = false
@@ -116,35 +217,62 @@ func (instance *CalculatorMenu) Run() {
 
 			switch instance.selection_path[0] {
 			case "Equals":
-				log.Println("Calculating current expression...")
-				// TODO: calculate the result of the current expression
+				res, err := instance.evaluate()
+				if err != nil {
+					instance.calc_displayed = "Error"
+					instance.calc_input = []rune{}
+				} else {
+					s := strconv.FormatFloat(res, 'f', -1, 64)
+					instance.calc_input = []rune(s)
+					instance.compute_displayed()
+				}
 
 			case "Clear":
 				instance.calc_input = []rune{}
 				instance.calc_displayed = ""
-				log.Println("Clearing current expression...")
 
 			case "Exchange rate":
 				// Check if the user selected a suboption
 				if len(instance.selection_path) > 1 {
-					switch instance.selection_path[1] {
-					case "Foreign as domestic":
-						log.Println("Storing foreign unit exchange rate expressed as domestic unit...")
-						// TODO
+					val, err := instance.evaluate()
+					if err == nil && val != 0 {
+						switch instance.selection_path[1] {
+						case "Foreign as domestic":
+							instance.parent.RenderAlert("ok", []string{"Rate", "saved"})
+							instance.parent.Set("Calc_ExchangeRate", val)
+							go instance.parent.SyncPersistent()
+							go instance.parent.PlayKey()
+							time.Sleep(time.Second)
 
-					case "Domestic as foreign":
-						log.Println("Storing domestic unit exchange rate expressed as foreign unit...")
-						// TODO
+						case "Domestic as foreign":
+							instance.parent.RenderAlert("ok", []string{"Rate", "saved"})
+							instance.parent.Set("Calc_ExchangeRate", 1.0/val)
+							go instance.parent.SyncPersistent()
+							go instance.parent.PlayKey()
+							time.Sleep(time.Second)
+						}
 					}
 				}
 
 			case "To domestic":
-				log.Println("Converting current value (in foreign) to domestic based on stored exchange rate...")
-				// TODO
+				val, err := instance.evaluate()
+				rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
+				if ok && err == nil {
+					res := val * rate
+					s := strconv.FormatFloat(res, 'f', -1, 64)
+					instance.calc_input = []rune(s)
+					instance.compute_displayed()
+				}
 
 			case "To foreign":
-				log.Println("Converting current value (in domestic) to foreign based on stored exchange rate...")
-				// TODO
+				val, err := instance.evaluate()
+				rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
+				if ok && err == nil && rate != 0 {
+					res := val / rate
+					s := strconv.FormatFloat(res, 'f', -1, 64)
+					instance.calc_input = []rune(s)
+					instance.compute_displayed()
+				}
 			}
 
 		}
@@ -214,13 +342,27 @@ func (instance *CalculatorMenu) Run() {
 					return
 
 				case '#':
-					instance.calc_input = append(instance.calc_input, '.')
-					instance.compute_displayed()
-					instance.render()
+					allowDecimal := true
+					for i := len(instance.calc_input) - 1; i >= 0; i-- {
+						c := instance.calc_input[i]
+						if c == '.' {
+							allowDecimal = false
+							break
+						}
+						if c == '+' || c == '-' || c == '*' || c == '/' {
+							break
+						}
+					}
+					if allowDecimal {
+						instance.calc_input = append(instance.calc_input, '.')
+						instance.compute_displayed()
+						instance.render()
+					}
 
 				case 'S':
 					go instance.parent.PushWithArgs("selector", &SelectorArgs{
-						Title: "Calculator",
+						Title:          "Calculator",
+						SelectionClass: "calculator.main",
 						Options: [][]string{
 							{"Equals"},
 							{"Clear"},

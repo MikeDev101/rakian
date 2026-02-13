@@ -94,33 +94,33 @@ func (instance *PowerMenu) handle_selection() {
 		return
 
 	case 1: // Loud mode
-		instance.parent.Set("CanVibrate", true, true)
-		instance.parent.Set("CanRing", true, true)
-		instance.parent.Set("BeepOnly", false, true)
+		instance.parent.Set("CanVibrate", true)
+		instance.parent.Set("CanRing", true)
+		instance.parent.Set("BeepOnly", false)
+		go instance.parent.SyncPersistent()
 		instance.parent.RenderAlert("ok", []string{"Loud", "mode on"})
-
 		go instance.parent.PlayAlert()
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 		go instance.parent.Pop()
 		return
 
 	case 2: // Discreet mode
-		instance.parent.Set("CanVibrate", true, true)
-		instance.parent.Set("CanRing", true, true)
-		instance.parent.Set("BeepOnly", true, true)
+		instance.parent.Set("CanVibrate", true)
+		instance.parent.Set("CanRing", true)
+		instance.parent.Set("BeepOnly", true)
+		go instance.parent.SyncPersistent()
 		instance.parent.RenderAlert("ok", []string{"Discreet", "mode on"})
-
 		go instance.parent.PlayAlert()
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 		go instance.parent.Pop()
 		return
 
 	/* case 3: // Vibrate mode
-	instance.parent.Set("CanVibrate", true, true)
-	instance.parent.Set("CanRing", false, true)
-	instance.parent.Set("BeepOnly", false, true)
+	instance.parent.Set("CanVibrate", true)
+	instance.parent.Set("CanRing", false)
+	instance.parent.Set("BeepOnly", false)
+	go instance.parent.SyncPersistent()
 	instance.parent.RenderAlert("ok", []string{"Vibrate only", "mode on"})
-
 	go func() {
 		for range 3 {
 			instance.parent.Player.StartVibrate()
@@ -129,18 +129,17 @@ func (instance *PowerMenu) handle_selection() {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}()
-
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	go instance.parent.Pop()
 	return */
 
 	case 3: // 4: // Silent mode
-		instance.parent.Set("CanVibrate", false, true)
-		instance.parent.Set("CanRing", false, true)
-		instance.parent.Set("BeepOnly", false, true)
+		instance.parent.Set("CanVibrate", false)
+		instance.parent.Set("CanRing", false)
+		instance.parent.Set("BeepOnly", false)
+		go instance.parent.SyncPersistent()
 		instance.parent.RenderAlert("ok", []string{"Silent", "mode on"})
-
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 		go instance.parent.Pop()
 		return
 
@@ -173,20 +172,18 @@ func (instance *PowerMenu) handle_selection() {
 		instance.parent.RenderAlert("ok", msg)
 		go instance.parent.PlayAlert()
 
-		go modem.ToggleFlightMode()
-
 		// Don't lockout ourselves if we're in debug mode
 		if !instance.parent.Get("DebugMode").(bool) {
-			wifi_on, wifi_err := instance.parent.NetworkManager.GetPropertyWirelessEnabled()
-			if wifi_err != nil {
-				panic(wifi_err)
-			}
-			if wifi_on {
-				instance.parent.NetworkManager.SetPropertyWirelessEnabled(false)
+			if instance.parent.Modem.FlightMode {
+				// Leaving airplane mode
+				go instance.parent.NetworkManager.SetPropertyWirelessEnabled(true)
 			} else {
-				instance.parent.NetworkManager.SetPropertyWirelessEnabled(true)
+				// Entering airplane mode
+				go instance.parent.NetworkManager.SetPropertyWirelessEnabled(false)
 			}
 		}
+
+		go modem.ToggleFlightMode()
 
 		time.Sleep(2 * time.Second)
 		go instance.parent.Pop()

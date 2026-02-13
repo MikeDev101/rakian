@@ -4,6 +4,7 @@ import (
 	"context"
 	"image"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -32,6 +33,7 @@ type Menu struct {
 	CurrentMenu   MenuInstance
 	GlobalContext context.Context
 	GlobalCancel  context.CancelFunc
+	DebugMode     bool
 
 	Display        *sh1107.SH1107
 	Sprites        map[string]image.Image
@@ -41,6 +43,7 @@ type Menu struct {
 	Player         *tones.Tones
 	GlobalStorage  *sync.Map
 	PersistStore   *gorm.DB
+	persistable    []string
 	NetworkManager gonetworkmanager.NetworkManager
 	WifiDevice     gonetworkmanager.Device
 
@@ -66,12 +69,7 @@ func (m *Menu) ontop(menu string) bool {
 }
 
 func (m *Menu) instack(menu string) bool {
-	for _, mi := range m.Stack {
-		if mi == m.Menus[menu] {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.Stack, m.Menus[menu])
 }
 
 // Run the menu at the given index in the stack.
@@ -85,7 +83,10 @@ func (m *Menu) run(index int) {
 	m.CurrentMenu = m.Stack[index]
 
 	go func() {
-		/*defer func() {
+		defer func() {
+			if m.DebugMode {
+				return
+			}
 			if r := recover(); r != nil {
 				m.Player.Stop()
 				log.Printf("💥 Recovering from panic crash in goroutine %v", r)
@@ -94,7 +95,7 @@ func (m *Menu) run(index int) {
 				time.Sleep(3 * time.Second)
 				go m.ToStart()
 			}
-		}()*/
+		}()
 
 		m.CurrentMenu.Run()
 	}()
@@ -128,11 +129,13 @@ func (m *Menu) ToMenu(menu string) {
 	defer m.lock.Unlock()
 
 	if m.masked {
+		log.Println("Menu is masked, cannot navigate to menu:", menu)
 		return
 	}
 
 	target := m.Menus[menu]
 	if target == nil {
+		log.Println("Menu not found:", menu)
 		return
 	}
 	target.Configure()
@@ -140,6 +143,7 @@ func (m *Menu) ToMenu(menu string) {
 		m.Stack[len(m.Stack)-1].Stop()
 	}
 	m.Stack = append(m.Stack, target)
+	log.Println("Navigating to menu:", menu)
 	m.run(len(m.Stack) - 1)
 }
 
@@ -154,11 +158,13 @@ func (m *Menu) PopToMenu(menu string) {
 	defer m.lock.Unlock()
 
 	if m.masked {
+		log.Println("Menu is masked, cannot navigate to menu:", menu)
 		return
 	}
 
 	target := m.Menus[menu]
 	if target == nil {
+		log.Println("Menu not found:", menu)
 		return
 	}
 	target.Configure()
@@ -167,6 +173,7 @@ func (m *Menu) PopToMenu(menu string) {
 	}
 	m.Stack = m.Stack[:len(m.Stack)-1]
 	m.Stack = append(m.Stack, target)
+	log.Println("Popping to menu:", menu)
 	m.run(len(m.Stack) - 1)
 }
 
@@ -334,11 +341,11 @@ func (m *Menu) Get(key string) any {
 	}
 }
 
-// SetOrCreate checks if a given key exists in the persistent store.
+// CreateOrLoadPersist checks if a given key exists in the persistent store.
 // If it does not exist, it creates a new entry with the given value.
 // If it does exist, it loads the existing value into the global storage.
 // This function is thread-safe and can be called from any goroutine.
-func (m *Menu) SetOrCreate(key string, value any) {
+func (m *Menu) CreateOrLoadPersist(key string, value any) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	var kv *db.KVStore
@@ -347,35 +354,53 @@ func (m *Menu) SetOrCreate(key string, value any) {
 		panic(res.Error)
 	}
 	if kv == nil || res.RowsAffected == 0 {
-		log.Printf("📑 Creating persist key %s (%v)", key, value)
+		log.Printf("📑 Creating persistent key %s (%v)", key, value)
 		m.GlobalStorage.Store(key, value)
 		m.PersistStore.Create(&db.KVStore{Key: key, Value: value})
 	} else {
-		log.Printf("📑 Loading persist key %s (%v)", key, kv.Value)
+		log.Printf("📑 Loading persistent key %s (%v)", key, kv.Value)
 		m.GlobalStorage.Store(key, kv.Value)
+	}
+	if !slices.Contains(m.persistable, key) {
+		m.persistable = append(m.persistable, key)
 	}
 }
 
-// Set stores a given key-value pair in the global storage.
-// If the persist argument is passed as true, the key-value pair is also stored in the persistent store.
+// Set sets a value in the global storage map.
 // This function is thread-safe and can be called from any goroutine.
-//
-// Example:
-//
-// m.Set("myKey", "myValue", true)
-//
-// This will store the key-value pair in the global storage and the persistent store.
-func (m *Menu) Set(key string, value any, persist ...bool) {
+// The value is stored in memory only, and is not persisted to the database.
+// If you want to persist the value to the database, use Persist instead.
+func (m *Menu) Set(key string, value any) {
 	m.GlobalStorage.Store(key, value)
-	if len(persist) > 0 && persist[0] {
-		m.lock.Lock()
-		defer m.lock.Unlock()
-		log.Printf("📑 Updating persist key %s (%v)", key, value)
-		res := m.PersistStore.Save(&db.KVStore{Key: key, Value: value})
-		if res.Error != nil {
-			panic(res.Error)
+}
+
+// SyncPersistent saves all the keys in the global storage map to the database.
+// This function is thread-safe and can be called from any goroutine.
+// It filters the keys in the global storage map to only save the keys that are
+// marked as persistable. If a key is not marked as persistable, it will not
+// be saved to the database.
+// If any errors occur while saving the keys to the database, this function
+// will panic.
+func (m *Menu) SyncPersistent() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	// Convert m.GlobalStorage to slice and filter keys
+	var temp []*db.KVStore
+	m.GlobalStorage.Range(func(key, value any) bool {
+		if slices.Contains(m.persistable, key.(string)) {
+			temp = append(temp, &db.KVStore{Key: key.(string), Value: value})
+			log.Printf("📑 Updating persistent key %s (%v)", key, value)
 		}
+		return true
+	})
+
+	// Save all the keys
+	res := m.PersistStore.Save(&temp)
+	if res.Error != nil {
+		panic(res.Error)
 	}
+
 }
 
 func (m *Menu) Register(name string, instance MenuInstance) {
@@ -417,6 +442,7 @@ func waitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 
 func Init(
 	ctx context.Context,
+	debug bool,
 	display *sh1107.SH1107,
 	sprites map[string]image.Image,
 	modem *phone.Modem,
@@ -445,6 +471,7 @@ func Init(
 		PersistStore:   persist,
 		NetworkManager: nm,
 		WifiDevice:     wifi_device,
+		DebugMode:      debug,
 	}
 
 	return m

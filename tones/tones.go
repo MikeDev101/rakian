@@ -42,18 +42,18 @@ func New() *Tones {
 		panic(" Tone pin does not support PWM!")
 	}
 
-	vibrator_pin := gpioreg.ByName("GPIO12")
+	/* vibrator_pin := gpioreg.ByName("GPIO12")
 	if vibrator_pin == nil {
 		panic(" Failed to find vibrator pin!")
 	}
 
 	if err := vibrator_pin.Out(gpio.Low); err != nil {
 		panic(err)
-	}
+	}*/
 
 	return &Tones{
-		pout:     pout,
-		vibrator: vibrator_pin,
+		pout: pout,
+		// vibrator: vibrator_pin,
 	}
 }
 
@@ -68,15 +68,15 @@ func (t *Tones) stoptone() {
 }
 
 func (t *Tones) startvibrate() {
-	if err := t.vibrator.Out(gpio.High); err != nil {
+	/* if err := t.vibrator.Out(gpio.High); err != nil {
 		panic(err)
-	}
+	} */
 }
 
 func (t *Tones) stopvibrate() {
-	if err := t.vibrator.Out(gpio.Low); err != nil {
+	/* if err := t.vibrator.Out(gpio.Low); err != nil {
 		panic(err)
-	}
+	} */
 }
 
 func (t *Tones) Stop() {
@@ -107,7 +107,11 @@ func (t *Tones) Play(ctx context.Context, notes []Note) {
 			t.stoptone()
 			return
 		default:
-			t.starttone(note_to_freq(n.Key), n.Divider)
+			if n.Key > 0 {
+				t.starttone(note_to_freq(n.Key), n.Divider)
+			} else {
+				t.stoptone()
+			}
 			timer := time.NewTimer(n.Duration)
 			select {
 			case <-ctx.Done():

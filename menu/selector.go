@@ -18,23 +18,29 @@ type Selector struct {
 	cancelFn                   context.CancelFunc
 	parent                     *Menu
 	wg                         sync.WaitGroup
-	selection                  int
-	viewOffset                 int
 	title                      string
 	buttonlabel                string
 	options                    [][]string
-	path                       []string
-	persistLastState           bool
+	selectors                  map[string]*SelectorState
 	allowNumbKeys              bool
 	showPathInTitle            bool
 	showElemNumbersInSelection bool
 	showElemNumberInTitle      bool
 	visibleRows                int
+	selectionclass             string
+}
+
+type SelectorState struct {
+	path       []string
+	selection  int
+	viewOffset int
+	persist    bool
 }
 
 type SelectorArgs struct {
 	PersistLastState           bool
 	VisibleRows                int
+	SelectionClass             string
 	Title                      string
 	Options                    [][]string
 	ButtonLabel                string
@@ -45,21 +51,22 @@ type SelectorArgs struct {
 }
 
 type SelectorReturn struct {
-	SelectionPath []string
+	SelectionClass string
+	SelectionPath  []string
 }
 
 func (m *Menu) NewSelector() *Selector {
 	return &Selector{
 		parent:    m,
-		selection: 0,
 		title:     "",
 		options:   [][]string{},
-		path:      []string{},
+		selectors: make(map[string]*SelectorState),
 	}
 }
 
 func (instance *Selector) get_current_options() []string {
-	if len(instance.path) == 0 {
+	state := instance.selectors[instance.selectionclass]
+	if len(state.path) == 0 {
 		// Root level: return the first element of each option row
 		opts := make([]string, len(instance.options))
 		for i, row := range instance.options {
@@ -70,7 +77,7 @@ func (instance *Selector) get_current_options() []string {
 		return opts
 	}
 	for _, row := range instance.options {
-		if len(row) > 0 && row[0] == instance.path[len(instance.path)-1] {
+		if len(row) > 0 && row[0] == state.path[len(state.path)-1] {
 			return row[1:]
 		}
 	}
@@ -84,8 +91,10 @@ func (instance *Selector) render() {
 
 	font := display.Use_Font8_Normal()
 
-	if instance.showPathInTitle && len(instance.path) > 0 {
-		display.DrawText(0, 20, font, strings.Join(instance.path, "/ "), false)
+	state := instance.selectors[instance.selectionclass]
+
+	if instance.showPathInTitle && len(state.path) > 0 {
+		display.DrawText(0, 20, font, strings.Join(state.path, "/ "), false)
 
 	} else {
 		display.DrawText(0, 20, font, instance.title, false)
@@ -94,13 +103,13 @@ func (instance *Selector) render() {
 	current_options := instance.get_current_options()
 
 	// Determine starting item index based on selection
-	if instance.selection < instance.viewOffset {
-		instance.viewOffset = instance.selection
-	} else if instance.selection >= instance.viewOffset+instance.visibleRows {
-		instance.viewOffset = instance.selection - instance.visibleRows + 1
+	if state.selection < state.viewOffset {
+		state.viewOffset = state.selection
+	} else if state.selection >= state.viewOffset+instance.visibleRows {
+		state.viewOffset = state.selection - instance.visibleRows + 1
 	}
 
-	start := int(instance.viewOffset)
+	start := int(state.viewOffset)
 	end := start + instance.visibleRows
 	if int(end) > len(current_options) {
 		end = len(current_options)
@@ -116,7 +125,7 @@ func (instance *Selector) render() {
 	font = display.Use_Font8_Bold()
 
 	if instance.showElemNumberInTitle {
-		display.DrawTextAligned(128, 20, font, fmt.Sprintf("%d", int(instance.selection+1)), false, sh1107.AlignLeft, sh1107.AlignNone)
+		display.DrawTextAligned(128, 20, font, fmt.Sprintf("%d", int(state.selection+1)), false, sh1107.AlignLeft, sh1107.AlignNone)
 	}
 
 	for i, opt := range current_options[start:end] {
@@ -126,7 +135,7 @@ func (instance *Selector) render() {
 		}
 
 		y := 40 + i*20 // Adjust for font height and spacing
-		if start+i == int(instance.selection) {
+		if start+i == int(state.selection) {
 			// Draw selection highlight box
 			display.SetColor(sh1107.White)
 			display.DrawRectangle(0, float64(y-1), 127, 16)
@@ -148,10 +157,14 @@ func (instance *Selector) Configure() {
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
-// ConfigureWithArgs configures the selector with the given arguments.
-// The first argument must be a SelectorArgs type, which contains the title and options for the selector.
-// If the first argument is not a SelectorArgs type, a panic will occur.
-// After calling ConfigureWithArgs, the selector must be configured before calling Run().
+// ConfigureWithArgs configures the Selector with the given arguments.
+// The first argument must be a *SelectorArgs type, which contains the
+// title, options, button label, visible rows, and other options.
+// If the first argument is not a *SelectorArgs type, a panic will occur.
+// After calling ConfigureWithArgs, the Selector must be configured before
+// calling Run().
+// If persistLastState is false, the selection will be reset to 0 and the
+// view offset will be reset to 0.
 func (instance *Selector) ConfigureWithArgs(args ...any) {
 
 	// See if we have args
@@ -174,13 +187,27 @@ func (instance *Selector) ConfigureWithArgs(args ...any) {
 	instance.showPathInTitle = selector_args.ShowPathInTitle
 	instance.showElemNumbersInSelection = selector_args.ShowElemNumbersInSelection
 	instance.showElemNumberInTitle = selector_args.ShowElemNumberInTitle
-	instance.persistLastState = selector_args.PersistLastState
+	instance.selectionclass = selector_args.SelectionClass
 
-	// Reset selection if persistLastState is false
-	if !instance.persistLastState {
-		instance.path = []string{}
-		instance.selection = 0
-		instance.viewOffset = 0
+	if instance.selectionclass == "" {
+		panic("(*Selector).ConfigureWithArgs() requires a selection class")
+	}
+
+	if instance.selectors == nil {
+		instance.selectors = make(map[string]*SelectorState)
+	}
+
+	if e, ok := instance.selectors[instance.selectionclass]; !ok {
+		instance.selectors[instance.selectionclass] = &SelectorState{
+			path:       []string{},
+			selection:  0,
+			viewOffset: 0,
+			persist:    selector_args.PersistLastState,
+		}
+	} else if !e.persist {
+		e.path = []string{}
+		e.selection = 0
+		e.viewOffset = 0
 	}
 
 	// Reset context
@@ -206,40 +233,45 @@ func (instance *Selector) Run() {
 					instance.parent.Display.On()
 					misc.KeyLightsOn()
 
+					state := instance.selectors[instance.selectionclass]
 					current_options := instance.get_current_options()
 					log.Println("Current options: ", current_options)
 
 					switch evt.Key {
 					case 'U':
 						go instance.parent.PlayKey()
-						if instance.selection == 0 {
-							instance.selection = len(current_options) - 1
-						} else if instance.selection > 0 {
-							instance.selection -= 1
+						if state.selection == 0 {
+							state.selection = len(current_options) - 1
+						} else if state.selection > 0 {
+							state.selection -= 1
 						}
-						log.Println("Selection: ", current_options[instance.selection])
+						log.Println("Selection: ", current_options[state.selection])
 						instance.render()
 					case 'D':
 						go instance.parent.PlayKey()
-						if instance.selection < len(current_options)-1 {
-							instance.selection += 1
-						} else if instance.selection == len(current_options)-1 {
-							instance.selection = 0
+						if state.selection < len(current_options)-1 {
+							state.selection += 1
+						} else if state.selection == len(current_options)-1 {
+							state.selection = 0
 						}
-						log.Println("Selection: ", current_options[instance.selection])
+						log.Println("Selection: ", current_options[state.selection])
 						instance.render()
 
 					case 'S':
 						go instance.parent.PlayKey()
 
+						if len(current_options) == 0 {
+							continue
+						}
+
 						// Check if we can go deeper
-						selected_option := current_options[instance.selection]
+						selected_option := current_options[state.selection]
 						has_children := false
 
 						log.Println("Selection chosen: ", selected_option)
 
 						// Only root items have children in this structure
-						if len(instance.path) == 0 {
+						if len(state.path) == 0 {
 							for i, row := range instance.options {
 								log.Println(i, row)
 								if len(row) > 0 && row[0] == selected_option {
@@ -253,14 +285,15 @@ func (instance *Selector) Run() {
 						}
 
 						if has_children {
-							instance.selection = 0
-							instance.viewOffset = 0
-							instance.path = append(instance.path, selected_option)
+							state.selection = 0
+							state.viewOffset = 0
+							state.path = append(state.path, selected_option)
 							instance.render()
 						} else {
 							// Return to the previous menu with our chosen selection
 							go instance.parent.PopWithArgs(&SelectorReturn{
-								SelectionPath: append(instance.path, selected_option),
+								SelectionClass: instance.selectionclass,
+								SelectionPath:  append(state.path, selected_option),
 							})
 							return
 						}
@@ -268,19 +301,20 @@ func (instance *Selector) Run() {
 					case 'C':
 						go instance.parent.PlayKey()
 
-						if len(instance.path) > 0 {
-							instance.path = instance.path[:len(instance.path)-1]
-							instance.selection = 0
-							instance.viewOffset = 0
+						if len(state.path) > 0 {
+							state.path = state.path[:len(state.path)-1]
+							state.selection = 0
+							state.viewOffset = 0
 							instance.render()
 						} else {
-							instance.selection = 0
-							instance.viewOffset = 0
-							instance.path = []string{}
+							state.selection = 0
+							state.viewOffset = 0
+							state.path = []string{}
 
 							// Return to the previous menu with an empty selection
 							go instance.parent.PopWithArgs(&SelectorReturn{
-								SelectionPath: []string{},
+								SelectionClass: instance.selectionclass,
+								SelectionPath:  []string{},
 							})
 							return
 						}
@@ -304,12 +338,12 @@ func (instance *Selector) Run() {
 							// Convert evt.Key to int
 							idx := int(evt.Key-'0') - 1
 							if idx >= 0 && idx < len(current_options) {
-								instance.selection = idx
+								state.selection = idx
 
-								selected_option := current_options[instance.selection]
+								selected_option := current_options[state.selection]
 								has_children := false
 
-								if len(instance.path) == 0 {
+								if len(state.path) == 0 {
 									for _, row := range instance.options {
 										if len(row) > 0 && row[0] == selected_option {
 											if len(row) > 1 {
@@ -321,13 +355,14 @@ func (instance *Selector) Run() {
 								}
 
 								if has_children {
-									instance.selection = 0
-									instance.viewOffset = 0
-									instance.path = append(instance.path, selected_option)
+									state.selection = 0
+									state.viewOffset = 0
+									state.path = append(state.path, selected_option)
 									instance.render()
 								} else {
 									go instance.parent.PopWithArgs(&SelectorReturn{
-										SelectionPath: append(instance.path, selected_option),
+										SelectionClass: instance.selectionclass,
+										SelectionPath:  append(state.path, selected_option),
 									})
 									return
 								}
@@ -361,9 +396,11 @@ func (instance *Selector) Stop() {
 func (instance *Selector) cleanup() {
 	instance.title = ""
 	instance.options = [][]string{}
-	if !instance.persistLastState {
-		instance.selection = 0
-		instance.viewOffset = 0
-		instance.path = []string{}
+	if state, ok := instance.selectors[instance.selectionclass]; ok {
+		if !state.persist {
+			state.path = []string{}
+			state.selection = 0
+			state.viewOffset = 0
+		}
 	}
 }

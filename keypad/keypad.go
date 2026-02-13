@@ -71,7 +71,7 @@ func stop(colPins [5]*PinOut) {
 	}
 }
 
-func Run(ctx context.Context) <-chan *KeypadEvent {
+func Run(ctx context.Context, debug bool) <-chan *KeypadEvent {
 	eventsChan := make(chan *KeypadEvent, 10)
 
 	// Must be first
@@ -84,9 +84,10 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 		{"GPIO7", gpioreg.ByName("GPIO7")},
 		{"GPIO8", gpioreg.ByName("GPIO8")},
 		// {"GPIO25", gpioreg.ByName("GPIO25")},
-		{"GPIP12", gpioreg.ByName("GPIO12")},
+		{"GPIO12", gpioreg.ByName("GPIO12")},
 		{"GPIO24", gpioreg.ByName("GPIO24")},
 	}
+
 	colPins := [5]*PinOut{
 		{"GPIO9", gpioreg.ByName("GPIO9")},
 		{"GPIO10", gpioreg.ByName("GPIO10")},
@@ -132,7 +133,7 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 			case <-ctx.Done():
 				stop(colPins)
 				return
-			default:
+			case <-time.After(20 * time.Millisecond):
 
 				// Scan power button
 				if powerButton != nil {
@@ -194,7 +195,11 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 											log.Printf("⚠️ Recovered from keypad fault")
 											faultyReads = 0
 										}
-										log.Printf("⌨️ Keypress detected on pins %s %s (%d:%d - %c)", rowPin.Label, colPin.Label, rowIdx, colIdx, lastRune)
+
+										if debug {
+											log.Printf("⌨️  Keypress detected on pins %s %s (%d:%d - %c)", rowPin.Label, colPin.Label, rowIdx, colIdx, lastRune)
+										}
+
 										eventsChan <- &KeypadEvent{
 											State:    true,
 											Key:      lastRune,
@@ -229,6 +234,9 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 						}
 					}
 					lastCol.Out(gpio.Low)
+					if debug {
+						log.Printf("⌨️  Keypress released on pins %s %s (%c)", lastRow.Label, lastCol.Label, lastRune)
+					}
 					lastRow = nil
 					lastCol = nil
 					eventsChan <- &KeypadEvent{
@@ -237,7 +245,6 @@ func Run(ctx context.Context) <-chan *KeypadEvent {
 						Duration: duration.Seconds(),
 					}
 				}
-				timers.SleepWithContext(time.Millisecond, ctx)
 			}
 		}
 	}()

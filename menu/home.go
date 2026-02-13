@@ -48,9 +48,16 @@ func (instance *HomeMenu) render() {
 		hour = 12
 	}
 
+	clock_str := fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm)
+
+	// Trim leading spaces
+	for clock_str[0] == ' ' {
+		clock_str = clock_str[1:]
+	}
+
 	// Draw clock
 	font := display.Use_Font16()
-	display.DrawTextAligned(64, 55, font, fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm), false, sh1107.AlignCenter, sh1107.AlignNone)
+	display.DrawTextAligned(64, 55, font, clock_str, false, sh1107.AlignCenter, sh1107.AlignNone)
 
 	// Draw carrier info
 	font = display.Use_Font8_Normal()

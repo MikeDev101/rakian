@@ -2,6 +2,7 @@ package menu
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -35,10 +36,16 @@ func (instance *PhoneMenu) render() {
 
 	font := display.Use_Font8_Bold()
 	display.DrawTextAligned(64, 105, font, "End", false, sh1107.AlignCenter, sh1107.AlignNone)
-	display.DrawText(0, 60, font, instance.parent.Modem.CallState.Status, false)
+	display.DrawTextAligned(0, 65, font, instance.parent.Modem.CallState.Status, false, sh1107.AlignRight, sh1107.AlignNone)
 
 	font = display.Use_Font16()
-	display.DrawText(0, 40, font, instance.parent.Modem.CallState.PhoneNumber, false)
+	display.DrawText(0, 45, font, instance.parent.Modem.CallState.PhoneNumber, false)
+
+	if !instance.parent.Modem.CallState.StartTime.IsZero() {
+		d := time.Since(instance.parent.Modem.CallState.StartTime)
+		font = display.Use_Font_Time()
+		display.DrawTextAligned(0, 80, font, fmt.Sprintf("%02d:%02d:%02d", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60), false, sh1107.AlignRight, sh1107.AlignNone)
+	}
 
 	display.Render()
 }

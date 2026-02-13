@@ -32,7 +32,7 @@ func (m *Menu) NewHomeSelectionMenu() *HomeSelectionMenu {
 			{"Call Register", "home/CallRegister"},
 			{"Settings", "home/Settings"},
 			{"Call Divert", "home/CallDivert"},
-			{"Games", "home/Games"},
+			{"Applications", "home/Apps"},
 			{"Calculator", "home/Calculator"},
 			{"Clock", "home/Clock"},
 			{"Tones", "home/Tones"},
@@ -70,10 +70,13 @@ func (instance *HomeSelectionMenu) handle_selection() {
 	go instance.parent.PlayKey()
 	switch instance.selection {
 	case 0: // Phone Book
+		log.Println("Phone Book selected")
 		go instance.parent.PopToMenu("phonebook")
 	case 3: // Settings
+		log.Println("Settings selected")
 		go instance.parent.PopToMenu("settings")
 	case 6: // Calculator
+		log.Println("Calculator selected")
 		go instance.parent.PopToMenu("calculator")
 	default:
 		// Generic handler

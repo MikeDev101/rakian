@@ -92,9 +92,9 @@ func SleepWithContext(duration time.Duration, ctx context.Context) {
 
 func PlayLowBattery(player *tones.Tones, ctx context.Context) {
 	notes := []tones.Note{
-		{103, 100 * time.Millisecond, 5}, // G7
-		{91, 100 * time.Millisecond, 5},  // G6
-		{0, time.Second, 1},              // NONE
+		{Key: 103, Duration: 100 * time.Millisecond, Divider: 5}, // G7
+		{Key: 91, Duration: 100 * time.Millisecond, Divider: 5},  // G6
+		{Key: 0, Duration: time.Second, Divider: 1},              // NONE
 	}
 
 	player.Play(ctx, notes)
@@ -102,15 +102,15 @@ func PlayLowBattery(player *tones.Tones, ctx context.Context) {
 
 func PlayDeadBattery(player *tones.Tones, ctx context.Context) {
 	notes := []tones.Note{
-		{103, 100 * time.Millisecond, 5}, // G7
-		{91, 100 * time.Millisecond, 5},  // G6
-		{0, 200 * time.Millisecond, 1},   // NONE
-		{103, 100 * time.Millisecond, 5}, // G7
-		{91, 100 * time.Millisecond, 5},  // G6
-		{0, 200 * time.Millisecond, 1},   // NONE
-		{103, 100 * time.Millisecond, 5}, // G7
-		{91, 100 * time.Millisecond, 5},  // G6
-		{0, time.Second, 1},              // NONE
+		{Key: 103, Duration: 100 * time.Millisecond, Divider: 5}, // G7
+		{Key: 91, Duration: 100 * time.Millisecond, Divider: 5},  // G6
+		{Key: 0, Duration: 200 * time.Millisecond, Divider: 1},   // NONE
+		{Key: 103, Duration: 100 * time.Millisecond, Divider: 5}, // G7
+		{Key: 91, Duration: 100 * time.Millisecond, Divider: 5},  // G6
+		{Key: 0, Duration: 200 * time.Millisecond, Divider: 1},   // NONE
+		{Key: 103, Duration: 100 * time.Millisecond, Divider: 5}, // G7
+		{Key: 91, Duration: 100 * time.Millisecond, Divider: 5},  // G6
+		{Key: 0, Duration: time.Second, Divider: 1},              // NONE
 	}
 
 	player.Play(ctx, notes)
@@ -118,34 +118,34 @@ func PlayDeadBattery(player *tones.Tones, ctx context.Context) {
 
 func PlayRingtone(player *tones.Tones, ctx context.Context) {
 	notes := []tones.Note{
-		{88, 150 * time.Millisecond, 10}, // E7
-		{86, 150 * time.Millisecond, 10}, // D#7 / Eb7
-		{78, 300 * time.Millisecond, 10}, // G#6 / Ab6
-		{80, 300 * time.Millisecond, 10}, // A#6 / Bb6
-		{85, 150 * time.Millisecond, 10}, // D7
-		{83, 150 * time.Millisecond, 10}, // C#7 / Db7
-		{74, 300 * time.Millisecond, 10}, // D6
-		{76, 300 * time.Millisecond, 10}, // E6
-		{83, 150 * time.Millisecond, 10}, // C#7 / Db7
-		{81, 150 * time.Millisecond, 10}, // B6
-		{73, 300 * time.Millisecond, 10}, // C#6 / Db6
-		{76, 300 * time.Millisecond, 10}, // E6
-		{81, 600 * time.Millisecond, 10}, // B6
-		{0, 3 * time.Second, 1},          // NONE
-		{88, 150 * time.Millisecond, 2},  // E7
-		{86, 150 * time.Millisecond, 2},  // D#7 / Eb7
-		{78, 300 * time.Millisecond, 2},  // G#6 / Ab6
-		{80, 300 * time.Millisecond, 2},  // A#6 / Bb6
-		{85, 150 * time.Millisecond, 2},  // D7
-		{83, 150 * time.Millisecond, 2},  // C#7 / Db7
-		{74, 300 * time.Millisecond, 2},  // D6
-		{76, 300 * time.Millisecond, 2},  // E6
-		{83, 150 * time.Millisecond, 2},  // C#7 / Db7
-		{81, 150 * time.Millisecond, 2},  // B6
-		{73, 300 * time.Millisecond, 2},  // C#6 / Db6
-		{76, 300 * time.Millisecond, 2},  // E6
-		{81, 600 * time.Millisecond, 2},  // B6
-		{0, 3 * time.Second, 1},          // NONE
+		{Key: 88, Duration: 150 * time.Millisecond, Divider: 10}, // E7
+		{Key: 86, Duration: 150 * time.Millisecond, Divider: 10}, // D#7 / Eb7
+		{Key: 78, Duration: 300 * time.Millisecond, Divider: 10}, // G#6 / Ab6
+		{Key: 80, Duration: 300 * time.Millisecond, Divider: 10}, // A#6 / Bb6
+		{Key: 85, Duration: 150 * time.Millisecond, Divider: 10}, // D7
+		{Key: 83, Duration: 150 * time.Millisecond, Divider: 10}, // C#7 / Db7
+		{Key: 74, Duration: 300 * time.Millisecond, Divider: 10}, // D6
+		{Key: 76, Duration: 300 * time.Millisecond, Divider: 10}, // E6
+		{Key: 83, Duration: 150 * time.Millisecond, Divider: 10}, // C#7 / Db7
+		{Key: 81, Duration: 150 * time.Millisecond, Divider: 10}, // B6
+		{Key: 73, Duration: 300 * time.Millisecond, Divider: 10}, // C#6 / Db6
+		{Key: 76, Duration: 300 * time.Millisecond, Divider: 10}, // E6
+		{Key: 81, Duration: 600 * time.Millisecond, Divider: 10}, // B6
+		{Key: 0, Duration: 3 * time.Second, Divider: 1},          // NONE
+		{Key: 88, Duration: 150 * time.Millisecond, Divider: 2},  // E7
+		{Key: 86, Duration: 150 * time.Millisecond, Divider: 2},  // D#7 / Eb7
+		{Key: 78, Duration: 300 * time.Millisecond, Divider: 2},  // G#6 / Ab6
+		{Key: 80, Duration: 300 * time.Millisecond, Divider: 2},  // A#6 / Bb6
+		{Key: 85, Duration: 150 * time.Millisecond, Divider: 2},  // D7
+		{Key: 83, Duration: 150 * time.Millisecond, Divider: 2},  // C#7 / Db7
+		{Key: 74, Duration: 300 * time.Millisecond, Divider: 2},  // D6
+		{Key: 76, Duration: 300 * time.Millisecond, Divider: 2},  // E6
+		{Key: 83, Duration: 150 * time.Millisecond, Divider: 2},  // C#7 / Db7
+		{Key: 81, Duration: 150 * time.Millisecond, Divider: 2},  // B6
+		{Key: 73, Duration: 300 * time.Millisecond, Divider: 2},  // C#6 / Db6
+		{Key: 76, Duration: 300 * time.Millisecond, Divider: 2},  // E6
+		{Key: 81, Duration: 600 * time.Millisecond, Divider: 2},  // B6
+		{Key: 0, Duration: 3 * time.Second, Divider: 1},          // NONE
 	}
 
 	player.Play(ctx, notes)
@@ -153,10 +153,10 @@ func PlayRingtone(player *tones.Tones, ctx context.Context) {
 
 func VibrateAlert(player *tones.Tones, ctx context.Context) {
 	states := []tones.Vibrate{
-		{true, 300 * time.Millisecond},
-		{false, 100 * time.Millisecond},
-		{true, 300 * time.Millisecond},
-		{false, 100 * time.Millisecond},
+		{State: true, Duration: 300 * time.Millisecond},
+		{State: false, Duration: 100 * time.Millisecond},
+		{State: true, Duration: 300 * time.Millisecond},
+		{State: false, Duration: 100 * time.Millisecond},
 	}
 	player.Vibrate(ctx, states)
 }
@@ -165,12 +165,12 @@ func StartVibrate(player *tones.Tones, ctx context.Context) {
 	var states []tones.Vibrate
 	for range 3 {
 		for _, elem := range []tones.Vibrate{
-			{true, 200 * time.Millisecond},
-			{false, 200 * time.Millisecond},
-			{true, 200 * time.Millisecond},
-			{false, 200 * time.Millisecond},
-			{true, 500 * time.Millisecond},
-			{false, 500 * time.Millisecond},
+			{State: true, Duration: 200 * time.Millisecond},
+			{State: false, Duration: 200 * time.Millisecond},
+			{State: true, Duration: 200 * time.Millisecond},
+			{State: false, Duration: 200 * time.Millisecond},
+			{State: true, Duration: 500 * time.Millisecond},
+			{State: false, Duration: 500 * time.Millisecond},
 		} {
 			states = append(states, elem)
 		}
@@ -180,10 +180,10 @@ func StartVibrate(player *tones.Tones, ctx context.Context) {
 
 func PlayBeep(player *tones.Tones, ctx context.Context) {
 	notes := []tones.Note{
-		{88, 150 * time.Millisecond, 2}, // E7
-		{0, 20 * time.Millisecond, 1},   // NONE
-		{88, 300 * time.Millisecond, 2}, // E7
-		{0, 3 * time.Second, 1},         // NONE
+		{Key: 88, Duration: 150 * time.Millisecond, Divider: 2}, // E7
+		{Key: 0, Duration: 20 * time.Millisecond, Divider: 1},   // NONE
+		{Key: 88, Duration: 300 * time.Millisecond, Divider: 2}, // E7
+		{Key: 0, Duration: 3 * time.Second, Divider: 1},         // NONE
 	}
 	player.Play(ctx, notes)
 }
@@ -191,14 +191,24 @@ func PlayBeep(player *tones.Tones, ctx context.Context) {
 func PlayBoot(player *tones.Tones, ctx context.Context) {
 	offset := 9
 	notes := []tones.Note{
-		{83 + offset, 300 * time.Millisecond, 10},  // C#7 / Db7
-		{81 + offset, 300 * time.Millisecond, 10},  // B6
-		{73 + offset, 600 * time.Millisecond, 10},  // C#6 / Db6
-		{76 + offset, 600 * time.Millisecond, 10},  // E6
-		{81 + offset, 1200 * time.Millisecond, 10}, // B6
+		{Key: 83 + offset, Duration: 300 * time.Millisecond, Divider: 10},  // C#7 / Db7
+		{Key: 81 + offset, Duration: 300 * time.Millisecond, Divider: 10},  // B6
+		{Key: 73 + offset, Duration: 600 * time.Millisecond, Divider: 10},  // C#6 / Db6
+		{Key: 76 + offset, Duration: 600 * time.Millisecond, Divider: 10},  // E6
+		{Key: 81 + offset, Duration: 1200 * time.Millisecond, Divider: 10}, // B6
 	}
 
 	player.Play(ctx, notes)
+}
+
+func GetChargingStatus() (charging bool) {
+	// Read status
+	state, err := os.ReadFile("/sys/class/power_supply/charger/online")
+	if err != nil {
+		return false
+	}
+	charging = strings.TrimSpace(string(state)) == "1"
+	return charging
 }
 
 func GetBatteryStatus() (voltage float64, capacity int, capacity_scaled int, err error) {
@@ -224,11 +234,24 @@ func GetBatteryStatus() (voltage float64, capacity int, capacity_scaled int, err
 		return 0.0, 0, 0, fmt.Errorf("converting raw voltage to int failed: %w", err)
 	}
 
+	// Cap capacity at 100%
+	if capacity > 100 {
+		capacity = 100
+	}
+
 	// Scale values
 	voltage = float64(voltageRaw) / 1000000.0
 	capacity_scaled = int(math.Round(float64(capacity) / 10.0))
 
 	return voltage, capacity, capacity_scaled, nil
+}
+
+func GetOSVersion() string {
+	output, err := exec.Command("awk", "-F=", "'$1==\"PRETTY_NAME\"", "{ print $2 ;}'", "/etc/os-release").CombinedOutput()
+	if err != nil {
+		panic(fmt.Errorf("os-release failed: %w", err))
+	}
+	return strings.ReplaceAll(strings.TrimSpace(string(output)), "\"", "")
 }
 
 func GetWiFiStatus() (connected bool, ssid string, signalScaled int, ipaddress string) {
@@ -311,7 +334,7 @@ func GetModemStatusMMCLI() (state string, operator string, signal string) {
 	return state, operator, signal
 }
 
-func SwitchToPowerSave() {
+func SwitchToPowerSaveMode() {
 	err := exec.Command("cpupower", "frequency-set", "--governor", "powersave").Run()
 	if err != nil {
 		panic(err)

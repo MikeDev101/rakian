@@ -132,12 +132,12 @@ func (instance *DialerMenu) Run() {
 						instance.ExitWithAlert([]string{"Airplane", "mode", "enabled."})
 						return
 
-					} else if !instance.parent.Modem.Connected {
-						instance.ExitWithAlert([]string{"No", "service!"})
-						return
-
 					} else if !instance.parent.Modem.SimCardInserted {
 						instance.ExitWithAlert([]string{"Insert a", "SIM card", "to continue."})
+						return
+
+					} else if !instance.parent.Modem.Connected {
+						instance.ExitWithAlert([]string{"No", "service!"})
 						return
 
 					} else {
