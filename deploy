@@ -1,12 +1,40 @@
 #!/bin/sh
 
-TARGET="10.0.0.24"
+TARGET="10.0.0.22"
+BINARY="rakian"
+REMOTE_PATH="/root/rakian/rakian"
 
-echo "Compiling..."
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X 'main.DEBUG_MODE=false'" .
-echo "Uploading..."
-ssh root@$TARGET "systemctl stop rakian.service; pkill rakian"
-scp -q ./rakian root@$TARGET:~/rakian
-echo "Restarting..."
-ssh root@$TARGET "systemctl restart rakian.service"
+echo "Compiling (Release Mode)..."
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o $BINARY -ldflags "-X 'main.DEBUG_MODE=false'" .
+
+# Calculate local hash
+LOCAL_HASH=$(md5sum $BINARY | cut -d' ' -f1)
+
+# Get remote hash
+REMOTE_HASH=$(ssh root@$TARGET "md5sum $REMOTE_PATH 2>/dev/null | cut -d' ' -f1")
+
+if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
+    echo "Hashes match ($LOCAL_HASH). Production binary is already up to date."
+    
+    # Check if the service is actually running, restart only if down
+    STATUS=$(ssh root@$TARGET "systemctl is-active rakian.service")
+    if [ "$STATUS" != "active" ]; then
+        echo "Service is not running. Starting..."
+        ssh root@$TARGET "systemctl start rakian.service"
+    fi
+else
+    echo "Hashes differ. Deploying new version..."
+    
+    # Stop the service only when we have a new binary to move
+    echo "Stopping service..."
+    ssh root@$TARGET "systemctl stop rakian.service; pkill rakian"
+    
+    echo "Uploading..."
+    scp -q ./$BINARY root@$TARGET:$REMOTE_PATH
+    
+    echo "Restarting service..."
+    ssh root@$TARGET "systemctl restart rakian.service"
+fi
+
+echo "Deployment check complete."
 exit 0

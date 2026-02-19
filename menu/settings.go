@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"misc"
+	"os/exec"
 	"sh1107"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +33,10 @@ type SettingsMenu struct {
 	selection_path    []string
 	options           [][]string
 	adapter           *bluetooth.Adapter
+	ap_cache          map[string]gonetworkmanager.AccessPoint
+	conn_cache        map[string]gonetworkmanager.Connection
+	bt_cache          map[string]string
+	current_target    string
 }
 
 // RenderAbout renders the about screen, which displays the logo and version
@@ -74,7 +81,6 @@ func (instance *SettingsMenu) RenderInternetStatus(state_msg string, network_inf
 	display.DrawTextAligned(0, 40, font, state_msg, false, sh1107.AlignRight, sh1107.AlignNone)
 
 	if net_conn, err := network_info.GetPropertyID(); err == nil {
-		// instance.parent.Get("WiFi_SSID").(string)
 		display.DrawTextAligned(0, 55, font, net_conn, false, sh1107.AlignRight, sh1107.AlignNone)
 	}
 
@@ -83,7 +89,6 @@ func (instance *SettingsMenu) RenderInternetStatus(state_msg string, network_inf
 		if err == nil {
 			net_ipv4_addr := net_ipv4_addrs[0].Address
 			net_ipv4_addr += "/" + fmt.Sprint(net_ipv4_addrs[0].Prefix)
-			// instance.parent.Get("WiFi_IP").(string)
 			display.DrawTextAligned(0, 65, font, net_ipv4_addr, false, sh1107.AlignRight, sh1107.AlignNone)
 			display.DrawTextAligned(0, 75, font, net_ipv4_addrs[0].Gateway, false, sh1107.AlignRight, sh1107.AlignNone)
 		}
@@ -103,16 +108,17 @@ func (instance *SettingsMenu) RenderInternetStatus(state_msg string, network_inf
 // NewSettingsMenu returns a new SettingsMenu instance with the given parent and default settings.
 func (m *Menu) NewSettingsMenu() *SettingsMenu {
 
-	// Init bluetooth
 	adapter := bluetooth.DefaultAdapter
-	err := adapter.Enable()
-	if err != nil {
-		panic(err)
+	if err := adapter.Enable(); err != nil {
+		log.Println("Warning: failed to enable bluetooth adapter:", err)
 	}
 
 	return &SettingsMenu{
 		parent:            m,
 		adapter:           adapter,
+		ap_cache:          make(map[string]gonetworkmanager.AccessPoint),
+		conn_cache:        make(map[string]gonetworkmanager.Connection),
+		bt_cache:          make(map[string]string),
 		process_selection: false,
 		selection_path:    []string{},
 		options: [][]string{
@@ -287,46 +293,160 @@ func (instance *SettingsMenu) SettingsMain(selection_path []string) int {
 		}
 
 	case "Join network":
-		// TODO
+		log.Println("⚙️ Scanning for networks...")
+		instance.parent.RenderAlert("loading", []string{"Scanning", "networks..."})
+
+		// Request a scan
+		if instance.parent.WifiDevice != nil {
+			go instance.parent.WifiDevice.RequestScan()
+			// Wait a moment for scan results
+			time.Sleep(3 * time.Second)
+
+			aps, err := instance.parent.WifiDevice.GetPropertyAccessPoints()
+			if err != nil {
+				log.Println("Error getting APs:", err)
+				instance.parent.RenderAlert("alert", []string{"Scan", "failed"})
+				time.Sleep(2 * time.Second)
+				return SettingsActionShowSelector
+			}
+
+			// Clear cache
+			instance.ap_cache = make(map[string]gonetworkmanager.AccessPoint)
+			var ap_names []string
+
+			for _, ap := range aps {
+				ssid, _ := ap.GetPropertySSID()
+				if ssid == "" {
+					continue
+				}
+				// Deduplicate by keeping the strongest signal?
+				// For simplicity, we just overwrite, or check if exists.
+				// NetworkManager usually handles the best AP for an SSID.
+				instance.ap_cache[ssid] = ap
+
+				// Check if already in list
+				found := false
+				for _, name := range ap_names {
+					if name == ssid {
+						found = true
+						break
+					}
+				}
+				if !found {
+					ap_names = append(ap_names, ssid)
+				}
+			}
+			sort.Strings(ap_names)
+
+			var options [][]string
+			for _, name := range ap_names {
+				options = append(options, []string{name})
+			}
+
+			if len(options) == 0 {
+				instance.parent.RenderAlert("info", []string{"No", "networks", "found"})
+				time.Sleep(2 * time.Second)
+				return SettingsActionShowSelector
+			}
+
+			go instance.parent.PushWithArgs("selector", &SelectorArgs{
+				SelectionClass: "settings.wifi_join",
+				Title:          "Join network",
+				Options:        options,
+				ButtonLabel:    "Join",
+				VisibleRows:    3,
+			})
+			return SettingsActionSubmenuPushed
+		} else {
+			instance.parent.RenderAlert("alert", []string{"WiFi", "device", "error"})
+			time.Sleep(2 * time.Second)
+		}
 
 	case "Saved networks":
-		// TODO
+		return instance.handleSavedNetworks()
 
 	case "Toggle Bluetooth":
-		// TODO
+		if misc.IsBluetoothEnabled() {
+			exec.Command("bluetoothctl", "power", "off").Run()
+			instance.parent.RenderAlert("ok", []string{"Turning", "Bluetooth", "off"})
+		} else {
+			exec.Command("bluetoothctl", "power", "on").Run()
+			instance.parent.RenderAlert("ok", []string{"Turning", "Bluetooth", "on"})
+		}
+		time.Sleep(2 * time.Second)
 
 	case "Pair device":
 		log.Println("⚙️ Scanning for devices...")
 
-		// Ensure any previous scan is stopped
-		instance.adapter.StopScan()
+		// Ensure Bluetooth is on
+		if !misc.IsBluetoothEnabled() {
+			exec.Command("bluetoothctl", "power", "on").Run()
+			time.Sleep(2 * time.Second)
+		}
 
 		// Temporarily stop timeouts for oled (prevent sleep mode from happening)
 		instance.parent.Timers["oled"].Stop()
 		instance.parent.Timers["keypad"].Stop()
 		misc.KeyLightsOn()
 
-		seen := make(map[string]bool)
 		var found_devices [][]string
 
-		instance.parent.RenderAlert("info", []string{"Scanning", "for", "devices..."})
+		instance.bt_cache = make(map[string]string)
+		instance.parent.RenderAlert("loading", []string{"Scanning", "for", "devices..."})
+
+		// Start scanning via bluetoothctl to force radio activity
+		scanCmd := exec.Command("bluetoothctl", "scan", "on")
+		scanCmd.Start()
+
+		// Start scanning via tinygo/bluetooth to collect results
 		go func() {
-			time.Sleep(5 * time.Second)
+			time.Sleep(10 * time.Second)
 			instance.adapter.StopScan()
-		}()
-		if err := instance.adapter.Scan(func(adapter *bluetooth.Adapter, device bluetooth.ScanResult) {
-			addr := device.Address.String()
-			if !seen[addr] {
-				seen[addr] = true
-				name := device.LocalName()
-				if name == "" {
-					return
-				}
-				found_devices = append(found_devices, []string{name})
+			if scanCmd.Process != nil {
+				scanCmd.Process.Kill()
 			}
-		}); err != nil {
+		}()
+
+		// Collect devices
+		discovered := make(map[string]string) // MAC -> Name
+		err := instance.adapter.Scan(func(adapter *bluetooth.Adapter, device bluetooth.ScanResult) {
+			name := device.LocalName()
+			mac := device.Address.String()
+			if name == "" {
+				// Don't include devices without names
+				return
+			}
+			discovered[mac] = name
+		})
+		if err != nil {
 			log.Println("Scan error:", err)
 		}
+
+		// Get paired devices to exclude
+		pairedOut, _ := exec.Command("bluetoothctl", "devices", "Paired").Output()
+		pairedMap := make(map[string]bool)
+		for line := range strings.SplitSeq(string(pairedOut), "\n") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 && parts[0] == "Device" {
+				pairedMap[parts[1]] = true
+			}
+		}
+
+		// Retrieve list of devices
+		for mac, name := range discovered {
+			if pairedMap[mac] {
+				continue
+			}
+			key := name
+			if _, exists := instance.bt_cache[key]; exists {
+				key = fmt.Sprintf("%s (%s)", name, mac)
+			}
+			instance.bt_cache[key] = mac
+			found_devices = append(found_devices, []string{key})
+		}
+		sort.Slice(found_devices, func(i, j int) bool {
+			return found_devices[i][0] < found_devices[j][0]
+		})
 
 		// Resume timeouts
 		instance.parent.Timers["oled"].Restart()
@@ -348,6 +468,9 @@ func (instance *SettingsMenu) SettingsMain(selection_path []string) int {
 		})
 		return SettingsActionSubmenuPushed
 
+	case "Saved devices":
+		return instance.handleSavedBluetooth()
+
 	case "Factory Reset":
 		// TODO
 	}
@@ -365,12 +488,119 @@ func (instance *SettingsMenu) BluetoothPair(selection_path []string) {
 	if len(instance.selection_path) > 0 {
 		selection := instance.selection_path[0]
 		log.Println("⚙️ Selected device:", selection)
-		// Here we would initiate pairing with the device
-		// For now, just confirm selection
-		instance.parent.RenderAlert("ok", []string{"Pairing", "request", "sent"})
-		go instance.parent.PlayAlert()
+
+		mac, ok := instance.bt_cache[selection]
+		if !ok {
+			instance.parent.RenderAlert("alert", []string{"Device", "not found"})
+			time.Sleep(2 * time.Second)
+			return
+		}
+
+		instance.parent.RenderAlert("loading", []string{"Pairing", "..."})
+
+		// Attempt to pair, trust, and connect
+		exec.Command("bluetoothctl", "pair", mac).Run()
+		exec.Command("bluetoothctl", "trust", mac).Run()
+		err := exec.Command("bluetoothctl", "connect", mac).Run()
+		if err != nil {
+			log.Println("BT Connect error:", err)
+			instance.parent.RenderAlert("alert", []string{"Connection", "failed"})
+		} else {
+			instance.parent.RenderAlert("ok", []string{"Connected"})
+		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+func (instance *SettingsMenu) handleSavedNetworks() int {
+	settings, err := gonetworkmanager.NewSettings()
+	if err != nil {
+		log.Println("Error getting settings:", err)
+		return SettingsActionShowSelector
+	}
+
+	conns, err := settings.ListConnections()
+	if err != nil {
+		log.Println("Error listing connections:", err)
+		return SettingsActionShowSelector
+	}
+
+	instance.conn_cache = make(map[string]gonetworkmanager.Connection)
+	var conn_names []string
+
+	for _, conn := range conns {
+		connSettings, err := conn.GetSettings()
+		if err != nil {
+			continue
+		}
+		// Check for connection type "802-11-wireless"
+		if connType, ok := connSettings["connection"]["type"].(string); ok && connType == "802-11-wireless" {
+			id, ok := connSettings["connection"]["id"].(string)
+			if !ok {
+				continue
+			}
+			instance.conn_cache[id] = conn
+			conn_names = append(conn_names, id)
+		}
+	}
+	sort.Strings(conn_names)
+
+	var options [][]string
+	for _, name := range conn_names {
+		options = append(options, []string{name})
+	}
+
+	if len(options) == 0 {
+		instance.parent.RenderAlert("info", []string{"No", "saved", "networks"})
+		time.Sleep(2 * time.Second)
+		return SettingsActionShowSelector
+	}
+
+	go instance.parent.PushWithArgs("selector", &SelectorArgs{
+		SelectionClass: "settings.wifi_saved",
+		Title:          "Saved networks",
+		Options:        options,
+		ButtonLabel:    "Select",
+		VisibleRows:    3,
+	})
+	return SettingsActionSubmenuPushed
+}
+
+func (instance *SettingsMenu) handleSavedBluetooth() int {
+	out, err := exec.Command("bluetoothctl", "devices", "Paired").Output()
+	if err != nil {
+		instance.parent.RenderAlert("alert", []string{"Error", "listing"})
+		return SettingsActionShowSelector
+	}
+
+	lines := strings.Split(string(out), "\n")
+	var options [][]string
+	instance.bt_cache = make(map[string]string)
+
+	for _, line := range lines {
+		parts := strings.Fields(line)
+		if len(parts) >= 3 && parts[0] == "Device" {
+			mac := parts[1]
+			name := strings.Join(parts[2:], " ")
+			instance.bt_cache[name] = mac
+			options = append(options, []string{name})
+		}
+	}
+
+	if len(options) == 0 {
+		instance.parent.RenderAlert("info", []string{"No", "saved", "devices"})
+		time.Sleep(2 * time.Second)
+		return SettingsActionShowSelector
+	}
+
+	go instance.parent.PushWithArgs("selector", &SelectorArgs{
+		SelectionClass: "settings.bt_saved",
+		Title:          "Saved devices",
+		Options:        options,
+		ButtonLabel:    "Select",
+		VisibleRows:    3,
+	})
+	return SettingsActionSubmenuPushed
 }
 
 func (instance *SettingsMenu) Run() {
@@ -428,6 +658,192 @@ func (instance *SettingsMenu) Run() {
 
 		// Launch bluetooth pairing handler
 		instance.BluetoothPair(instance.selection_path)
+
+	case "settings.wifi_join":
+		if len(instance.selection_path) > 0 {
+			ssid := instance.selection_path[0]
+			log.Println("⚙️ Joining network:", ssid)
+
+			// Check if we have the AP info
+			ap, ok := instance.ap_cache[ssid]
+			password := ""
+
+			if ok {
+				// Check security flags
+				flags, _ := ap.GetPropertyFlags()
+				wpaFlags, _ := ap.GetPropertyWPAFlags()
+				rsnFlags, _ := ap.GetPropertyRSNFlags()
+
+				// Simple check: if any privacy flag is set, ask for password
+				// NM_802_11_AP_FLAGS_PRIVACY = 0x1
+				if (flags&1) != 0 || wpaFlags != 0 || rsnFlags != 0 {
+					password = instance.parent.EnterText("Input password", instance.ctx)
+					if password == "" {
+						// User cancelled
+						break
+					}
+				}
+			}
+
+			instance.parent.RenderAlert("loading", []string{"Connect", "in progress"})
+
+			// Create connection settings
+			connSettings := make(map[string]map[string]any)
+			connSettings["connection"] = make(map[string]any)
+			connSettings["connection"]["id"] = ssid
+			connSettings["connection"]["type"] = "802-11-wireless"
+
+			connSettings["802-11-wireless"] = make(map[string]any)
+			connSettings["802-11-wireless"]["ssid"] = []byte(ssid)
+
+			if password != "" {
+				connSettings["802-11-wireless-security"] = make(map[string]any)
+				connSettings["802-11-wireless-security"]["key-mgmt"] = "wpa-psk" // Assume WPA/WPA2 for now
+				connSettings["802-11-wireless-security"]["psk"] = password
+			}
+
+			// Add and activate
+			_, err := instance.parent.NetworkManager.AddAndActivateConnection(connSettings, instance.parent.WifiDevice)
+			if err != nil {
+				log.Println("Connection error:", err)
+				instance.parent.RenderAlert("alert", []string{"Failed to", "create", "connection"})
+			} else {
+				instance.parent.RenderAlert("ok", []string{"Connection", "created and", "saved"})
+			}
+			time.Sleep(2 * time.Second)
+		}
+
+	case "settings.wifi_saved":
+		if len(instance.selection_path) > 0 {
+			instance.current_target = instance.selection_path[0]
+
+			// Check if connected
+			isConnected := false
+			activeConns, _ := instance.parent.NetworkManager.GetPropertyActiveConnections()
+			for _, ac := range activeConns {
+				id, _ := ac.GetPropertyID()
+				if id == instance.current_target {
+					isConnected = true
+					break
+				}
+			}
+
+			action := "Connect"
+			if isConnected {
+				action = "Disconnect"
+			}
+
+			// Show options for the saved network
+			go instance.parent.PushWithArgs("selector", &SelectorArgs{
+				SelectionClass:   "settings.wifi_saved_action",
+				Title:            instance.current_target,
+				Options:          [][]string{{action}, {"Forget"}},
+				ButtonLabel:      "Select",
+				VisibleRows:      2,
+				PersistLastState: false,
+			})
+			return
+		}
+
+	case "settings.wifi_saved_action":
+		if len(instance.selection_path) > 0 && instance.current_target != "" {
+			action := instance.selection_path[0]
+			conn, ok := instance.conn_cache[instance.current_target]
+
+			if ok {
+				switch action {
+				case "Forget":
+					err := conn.Delete()
+					if err == nil {
+						instance.parent.RenderAlert("ok", []string{"Network", "forgotten"})
+					} else {
+						instance.parent.RenderAlert("alert", []string{"Error", "forgetting"})
+					}
+				case "Connect":
+					instance.parent.RenderAlert("loading", []string{"Connect", "in progress"})
+					_, err := instance.parent.NetworkManager.ActivateConnection(conn, instance.parent.WifiDevice, nil)
+					if err != nil {
+						instance.parent.RenderAlert("alert", []string{"Connection", "failed"})
+					}
+				case "Disconnect":
+					instance.parent.RenderAlert("loading", []string{"Disconnect", "in progress"})
+					activeConns, _ := instance.parent.NetworkManager.GetPropertyActiveConnections()
+					for _, ac := range activeConns {
+						id, _ := ac.GetPropertyID()
+						if id == instance.current_target {
+							err := instance.parent.NetworkManager.DeactivateConnection(ac)
+							if err != nil {
+								instance.parent.RenderAlert("alert", []string{"Disconnect", "failed"})
+							} else {
+								instance.parent.RenderAlert("ok", []string{"Disconnected"})
+							}
+							break
+						}
+					}
+				}
+				time.Sleep(2 * time.Second)
+			}
+			instance.current_target = ""
+		}
+
+	case "settings.bt_saved":
+		if len(instance.selection_path) > 0 {
+			instance.current_target = instance.selection_path[0]
+
+			mac, ok := instance.bt_cache[instance.current_target]
+			isConnected := false
+			if ok {
+				out, _ := exec.Command("bluetoothctl", "info", mac).Output()
+				if strings.Contains(string(out), "Connected: yes") {
+					isConnected = true
+				}
+			}
+
+			action := "Connect"
+			if isConnected {
+				action = "Disconnect"
+			}
+
+			go instance.parent.PushWithArgs("selector", &SelectorArgs{
+				SelectionClass:   "settings.bt_saved_action",
+				Title:            instance.current_target,
+				Options:          [][]string{{action}, {"Forget"}},
+				ButtonLabel:      "Select",
+				VisibleRows:      2,
+				PersistLastState: false,
+			})
+			return
+		}
+
+	case "settings.bt_saved_action":
+		if len(instance.selection_path) > 0 && instance.current_target != "" {
+			action := instance.selection_path[0]
+			mac, ok := instance.bt_cache[instance.current_target]
+
+			if ok {
+				switch action {
+				case "Forget":
+					exec.Command("bluetoothctl", "remove", mac).Run()
+					instance.parent.RenderAlert("ok", []string{"Device", "forgotten"})
+				case "Connect":
+					instance.parent.RenderAlert("loading", []string{"Connect", "in progress"})
+					if err := exec.Command("bluetoothctl", "connect", mac).Run(); err != nil {
+						instance.parent.RenderAlert("alert", []string{"Connection", "failed"})
+					} else {
+						instance.parent.RenderAlert("ok", []string{"Connected"})
+					}
+				case "Disconnect":
+					instance.parent.RenderAlert("loading", []string{"Disconnect", "in progress"})
+					if err := exec.Command("bluetoothctl", "disconnect", mac).Run(); err != nil {
+						instance.parent.RenderAlert("alert", []string{"Disconnect", "failed"})
+					} else {
+						instance.parent.RenderAlert("ok", []string{"Disconnected"})
+					}
+				}
+				time.Sleep(2 * time.Second)
+			}
+			instance.current_target = ""
+		}
 	}
 
 	instance.process_selection = false
@@ -445,6 +861,10 @@ func (instance *SettingsMenu) Run() {
 		PersistLastState:           true,
 	})
 }
+
+// Helper to handle the saved network action since we need state persistence
+// We will modify the `settings.wifi_saved` case to store the selection.
+// And we need to modify the struct to hold `current_target`.
 
 func (instance *SettingsMenu) Pause() {
 	instance.process_selection = true
@@ -469,6 +889,9 @@ func (instance *SettingsMenu) Stop() {
 func (instance *SettingsMenu) cleanup() {
 	instance.process_selection = false
 	instance.selection_path = []string{}
+	instance.ap_cache = nil
+	instance.conn_cache = nil
+	instance.bt_cache = nil
 }
 
 func (instance *SettingsMenu) GetNetworkState() string {

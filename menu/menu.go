@@ -45,7 +45,7 @@ type Menu struct {
 	PersistStore   *gorm.DB
 	persistable    []string
 	NetworkManager gonetworkmanager.NetworkManager
-	WifiDevice     gonetworkmanager.Device
+	WifiDevice     gonetworkmanager.DeviceWireless
 
 	GlobalQuit func(uint8)
 
@@ -309,7 +309,7 @@ func (m *Menu) PopWithArgs(args ...any) {
 		return
 	}
 
-	if len(m.Stack) == 0 {
+	if len(m.Stack) <= 1 {
 		return
 	}
 
@@ -451,7 +451,7 @@ func Init(
 	keypadevents <-chan *keypad.KeypadEvent,
 	persist *gorm.DB,
 	nm gonetworkmanager.NetworkManager,
-	wifi_device gonetworkmanager.Device,
+	wifi_device gonetworkmanager.DeviceWireless,
 ) *Menu {
 
 	menu_ctx, menu_cancel := context.WithCancel(ctx)

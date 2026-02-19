@@ -55,6 +55,10 @@ type SelectorReturn struct {
 	SelectionPath  []string
 }
 
+func (*Selector) Label() string {
+	return "Selector"
+}
+
 func (m *Menu) NewSelector() *Selector {
 	return &Selector{
 		parent:    m,
@@ -218,6 +222,9 @@ func (instance *Selector) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*Selector).Run() before (*Selector).Configure()!")
 	}
+
+	// Wait for display to be ready
+	instance.parent.Display.Ready()
 
 	instance.render()
 	instance.wg.Go(func() {

@@ -1,12 +1,28 @@
 #!/bin/sh
 
-TARGET="10.0.0.24"
+TARGET="10.0.0.22"
+BINARY="rakian"
+REMOTE_PATH="/root/rakian/rakian_debugger"
 
-echo "Compiling..."
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X 'main.DEBUG_MODE=true'" .
-echo "Uploading..."
-ssh root@$TARGET "systemctl stop rakian.service; pkill rakian"
-scp -q ./rakian root@$TARGET:~/rakian
+# 1. ALWAYS Compile first so the local binary is up-to-date
+echo "Compiling (Debug Mode)..."
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o $BINARY -ldflags "-X 'main.DEBUG_MODE=true'" .
+
+# 2. Now calculate hashes
+LOCAL_HASH=$(md5sum $BINARY | cut -d' ' -f1)
+REMOTE_HASH=$(ssh root@$TARGET "md5sum $REMOTE_PATH 2>/dev/null | cut -d' ' -f1")
+
+# 3. Stop services and check hashes
+ssh root@$TARGET "systemctl stop rakian.service; pkill rakian; pkill rakian_debugger"
+
+if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
+    echo "Hashes match ($LOCAL_HASH). Skipping upload."
+else
+    echo "Hashes differ. Updating target..."
+    cp ./$BINARY ./rakian_debugger
+    scp -q ./rakian_debugger root@$TARGET:$REMOTE_PATH
+fi
+
 echo "Launching..."
-ssh root@$TARGET "/root/rakian/rakian"
+ssh root@$TARGET "$REMOTE_PATH"
 exit 0

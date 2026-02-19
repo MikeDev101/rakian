@@ -247,7 +247,7 @@ func GetBatteryStatus() (voltage float64, capacity int, capacity_scaled int, err
 }
 
 func GetOSVersion() string {
-	output, err := exec.Command("awk", "-F=", "'$1==\"PRETTY_NAME\"", "{ print $2 ;}'", "/etc/os-release").CombinedOutput()
+	output, err := exec.Command("awk", "-F=", "$1==\"PRETTY_NAME\" { print $2 ;}", "/etc/os-release").CombinedOutput()
 	if err != nil {
 		panic(fmt.Errorf("os-release failed: %w", err))
 	}
@@ -313,8 +313,8 @@ func GetModemStatusMMCLI() (state string, operator string, signal string) {
 		return "error", "", "0"
 	}
 
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(out), "\n")
+	for line := range lines {
 		parts := strings.SplitN(line, ": ", 2)
 		if len(parts) < 2 {
 			continue
@@ -332,20 +332,6 @@ func GetModemStatusMMCLI() (state string, operator string, signal string) {
 		}
 	}
 	return state, operator, signal
-}
-
-func SwitchToPowerSaveMode() {
-	err := exec.Command("cpupower", "frequency-set", "--governor", "powersave").Run()
-	if err != nil {
-		panic(err)
-	}
-}
-
-func SwitchToNormalMode() {
-	err := exec.Command("cpupower", "frequency-set", "--governor", "schedutil").Run()
-	if err != nil {
-		panic(err)
-	}
 }
 
 func TestText(display *sh1107.SH1107) {
@@ -463,4 +449,13 @@ func CheckConnectivity(ctx context.Context) bool {
 	}
 
 	return res
+}
+
+func IsBluetoothEnabled() bool {
+	out, err := exec.Command("bluetoothctl", "show").Output()
+	if err != nil {
+		log.Println("⚠️ Failed to check bluetooth status:", err)
+		return false
+	}
+	return strings.Contains(string(out), "Powered: yes")
 }

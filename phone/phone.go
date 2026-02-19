@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,6 +31,8 @@ type CallState struct {
 type Modem struct {
 	CallState         *CallState
 	Port              *serial.Port
+	AudioPort         *serial.Port
+	audioCmd          *exec.Cmd
 	DebugMode         bool
 	mu                sync.Mutex
 	cmdMutex          sync.Mutex
@@ -80,8 +84,9 @@ func NewModem(port string, baud int, debug bool) (*Modem, error) {
 	}
 
 	m.handlers = map[string]func(string){
-		"RING":         m.handleCall,
-		"+CMTI:":       m.handleSMS,
+		"RING":  m.handleCall,
+		"+CMT:": m.handleSMSDirectly,
+		// "+CMTI:":       m.handleSMS,
 		"+CSQ:":        m.handleSignalStrength,
 		"+CNSMOD:":     m.handleConnectionType,
 		"+SIMCARD:":    m.handleSIMCard,
@@ -94,6 +99,7 @@ func NewModem(port string, baud int, debug bool) (*Modem, error) {
 		"+COPS:":       m.handleCarrierInfo,
 		"NO CARRIER":   m.handleNoCarrier,
 		"+CREG:":       m.handleRegistrationUpdate,
+		"+CGREG:":      m.handleRegistrationUpdate,
 		"+CEREG:":      m.handleRegistrationUpdate,
 	}
 
@@ -103,23 +109,26 @@ func NewModem(port string, baud int, debug bool) (*Modem, error) {
 	initCmds := []string{
 		"AT+CFUN=1",                    // Enable
 		"ATE0",                         // Disable echo early to prevent polluted buffers
-		"AT+CSCLK=1",                   // Enable general sleep mode
+		"AT+COPS?",                     // Check network status
+		"AT+CSQ",                       // Check signal strength
+		"AT+CSCLK=0",                   // Disable sleep mode during initialization
 		"AT+CATR=0",                    // Ensure URCs only go to the active port
 		"AT+AUTOCSQ=0,0",               // Disable early signal reports until ready
 		"AT+CLCC=1",                    // Call reporting
 		"AT+COUTGAIN=8",                // Set speaker gain
 		"AT+CMICGAIN=8",                // Set mic gain
-		"AT+CPMS=\"ME\",\"ME\",\"ME\"", // Set SMS storage
-		"AT+CNMP=38",                   // Force LTE mode
-		"AT+CNSMOD=1",                  // Network mode updates
-		"AT+CMGD=1,4",                  // Clear SMS storage
+		"AT+CSMS=1",                    // Enable SMS (GSM Phase 2+)
+		"AT+CSCA=\"+19037029920\"",     // Set short code address for Verizon SMS
+		"AT+CMGF=1",                    // Set SMS text mode
+		"AT+CPMS=\"ME\",\"ME\",\"ME\"", // Set SMS storage to RAM
 		"AT+CNMI=2,2,0,0,0",            // Configure notifications
+		"AT+CNMP=2",                    // Automatic network mode
+		"AT+CNSMOD=1",                  // Network mode updates
 		"AT+CPCMFRM=1",                 // Configure 16 KHz audio mode
 		"AT+CREG=2",                    // Configure network registration
 		"AT+CEREG=2",                   // Configure network registration
 		"AT+CPIN?",                     // Check SIM card status
-		"AT+COPS?",                     // Check network status
-		"AT+CSQ?",                      // Check signal strength
+		"AT+AUTOCSQ=1,1",               // Enable signal reports since we're ready
 	}
 	for _, cmd := range initCmds {
 		resp, _ := m.send(cmd)
@@ -157,6 +166,14 @@ func (m *Modem) listenLoop() {
 			m.mu.Unlock()
 			log.Println(line)
 			if m.isUnsolicited(line) {
+				if strings.HasPrefix(line, "+CMT:") {
+					body, err := reader.ReadString('\r')
+					if err == nil {
+						cleanBody := strings.TrimSpace(body)
+						cleanBody = strings.ReplaceAll(cleanBody, "\n", "\r")
+						line = fmt.Sprintf("%s\r%s", line, cleanBody)
+					}
+				}
 				m.urcChan <- line
 			}
 		}
@@ -164,15 +181,87 @@ func (m *Modem) listenLoop() {
 }
 
 func (m *Modem) handleRegistrationUpdate(line string) {
-	// This URC tells us the network state changed.
-	// Now we perform a single 'read' to update our Carrier and Gen info.
-	if m.DebugMode {
-		log.Println("🔄 Network change detected, updating COPS...")
+	var stat int
+	var lac, ci, act string
+	var prefix string
+
+	if strings.HasPrefix(line, "+CEREG:") {
+		prefix = "+CEREG:"
+	} else if strings.HasPrefix(line, "+CGREG:") {
+		prefix = "+CGREG:"
+	} else if strings.HasPrefix(line, "+CREG:") {
+		prefix = "+CREG:"
+	} else {
+		return
 	}
 
-	// Trigger the update
+	// Parse the line
+	payload := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	parts := strings.Split(payload, ",")
+
+	if len(parts) >= 1 {
+		if val, err := strconv.Atoi(parts[0]); err == nil {
+			stat = val
+		}
+	}
+
+	if len(parts) >= 3 {
+		lac = strings.Trim(parts[1], "\"")
+		ci = strings.Trim(parts[2], "\"")
+	}
+
+	if len(parts) >= 4 {
+		act = strings.Trim(parts[3], "\"")
+	}
+
+	statusMap := map[int]string{
+		0: "Not registered, not searching",
+		1: "Registered, home network",
+		2: "Not registered, searching...",
+		3: "Registration denied",
+		4: "Not registered, unknown",
+		5: "Registered, roaming",
+		6: "Registered, SMS only (home)",
+		7: "Registered, SMS only (roaming)",
+		8: "Emergency services only",
+	}
+
+	statusStr, ok := statusMap[stat]
+	if !ok {
+		statusStr = fmt.Sprintf("Unknown status (%d)", stat)
+	}
+
+	if m.DebugMode {
+		log.Printf("📡 Registration Update (%s): %s", strings.TrimSuffix(prefix, ":"), statusStr)
+		if lac != "" && ci != "" {
+			log.Printf("   Area Code: %s, Cell ID: %s", lac, ci)
+		}
+		if act != "" {
+			log.Printf("   Access Tech: %s", act)
+		}
+	}
+
+	// Update connected state based on stat
+	switch stat {
+	case 1, 5, 6, 7, 8:
+		m.Connected = true
+		actInt, _ := strconv.Atoi(act)
+		m.NetworkGeneration = mapActToGen(actInt)
+	case 0, 4:
+		m.Connected = false
+		m.SignalStrength = 0
+		m.NetworkGeneration = ""
+		m.Carrier = "No Service"
+	case 2:
+		m.Connected = false
+		m.NetworkGeneration = ""
+		m.SignalStrength = 0
+		m.Carrier = "Searching..."
+	}
+
+	// Send AT+COPS? request
 	resp, _ := m.send("AT+COPS?")
-	m.handleCarrierInfo(resp)
+	m.HandleEvent(resp)
 }
 
 func (m *Modem) EnterNumber(key rune) {
@@ -181,7 +270,7 @@ func (m *Modem) EnterNumber(key rune) {
 
 func (m *Modem) isUnsolicited(line string) bool {
 	prefixes := []string{
-		"RING", "+CMTI:", "+CSQ:", "+CLCC:", "+CCLK:", "+SIMCARD:",
+		"RING", "+CMT:", "+CMTI:", "+CSQ:", "+CLCC:", "+CCLK:", "+SIMCARD:",
 		"+CPIN", "+CNSMOD:", "+CME ERROR:", "+CMEE", "MISSED_CALL:",
 		"NO CARRIER", "+CBC:", "+CREG:", "+CEREG:",
 	}
@@ -287,7 +376,6 @@ func (m *Modem) toggle(cmd string, b bool) error {
 	_, err := m.send(fmt.Sprintf("%s=%d", cmd, val))
 	return err
 }
-func (m *Modem) SetupSMSNotifications() error { _, err := m.send("AT+CNMI=2,1,2,2,0"); return err }
 func (m *Modem) SendSMS(to, message string) error {
 	if _, err := m.send("AT+CMGF=1"); err != nil {
 		return err
@@ -318,6 +406,7 @@ func (m *Modem) handleCarrierInfo(line string) {
 	// 1. Check for the "Searching" or "Deregistered" state first
 	if line == "+COPS: 0" || strings.Contains(line, ",,,") {
 		m.Carrier = "Searching..."
+		m.SignalStrength = 0
 		m.Connected = false
 		return
 	}
@@ -340,11 +429,6 @@ func (m *Modem) handleCarrierInfo(line string) {
 			act, _ := strconv.Atoi(matches[2])
 			m.NetworkGeneration = mapActToGen(act)
 		}
-
-	} else {
-		m.Carrier = "No Service"
-		m.NetworkGeneration = ""
-		m.Connected = false
 	}
 
 	if m.DebugMode {
@@ -404,9 +488,21 @@ func (m *Modem) handleCall(_ string) {
 	}
 }
 
-func (m *Modem) handleMissedCall(_ string) {
-	if m.DebugMode {
-		log.Println("📞 Missed call...")
+func (m *Modem) handleMissedCall(line string) {
+	re := regexp.MustCompile(`MISSED_CALL:\s*(\d{1,2}:\d{2}[AP]M)\s+([+\d]+)`)
+	matches := re.FindStringSubmatch(line)
+
+	if len(matches) > 2 {
+		timeStr := matches[1]
+		number := matches[2]
+		log.Printf("📞 Missed call from %s at %s", number, timeStr)
+	} else if m.DebugMode {
+		log.Println("📞 Missed call (unknown details)...")
+	}
+
+	select {
+	case m.MissedCallChan <- true:
+	default:
 	}
 }
 
@@ -541,10 +637,42 @@ func (m *Modem) InitPCMStream() {
 	} else {
 		log.Printf("🚿 PCM Steam start error: %v", err)
 	}
+	if m.audioCmd == nil {
+		cmd := exec.Command("/usr/bin/serial_audio_16")
+		stdout, _ := cmd.StdoutPipe()
+
+		if err := cmd.Start(); err != nil {
+			log.Printf("⚠️ Failed to start audio process: %v", err)
+		} else {
+			m.audioCmd = cmd
+
+			// Print out messages from the audio process
+			if stdout != nil {
+				go func() {
+					scanner := bufio.NewScanner(stdout)
+					for scanner.Scan() {
+						if m.DebugMode {
+							log.Printf("🔊 %s", scanner.Text())
+						}
+					}
+				}()
+			}
+		}
+	}
 }
 
 func (m *Modem) EndPCMStream() {
-	resp, err := m.send("AT+CPCMREG=0,1")
+	if m.audioCmd != nil && m.audioCmd.Process != nil {
+		if err := m.audioCmd.Process.Signal(os.Interrupt); err != nil {
+			log.Printf("⚠️ Failed to interrupt audio process: %v", err)
+		}
+		if err := m.audioCmd.Wait(); err != nil {
+			log.Printf("⚠️ Audio process exited with error: %v", err)
+		}
+		m.audioCmd = nil
+	}
+	<-time.After(100 * time.Millisecond)
+	resp, err := m.send("AT+CPCMREG=0")
 	if err == nil {
 		if m.DebugMode {
 			log.Printf("🚿 PCM Stream stopped! (%s)", resp)
@@ -563,7 +691,26 @@ func (m *Modem) handleClock(line string) {
 	}
 }
 
-func (m *Modem) handleSMS(line string) {
+func (m *Modem) handleSMSDirectly(line string) {
+	parts := strings.Split(line, "\r")
+	if len(parts) < 2 {
+		return
+	}
+
+	header := parts[0]
+	body := strings.Join(parts[1:], "\n")
+
+	re := regexp.MustCompile(`\+CMT:\s*"([^"]+)"`)
+	matches := re.FindStringSubmatch(header)
+	sender := "Unknown"
+	if len(matches) > 1 {
+		sender = matches[1]
+	}
+
+	log.Printf("📩 New SMS from %s: %s", sender, autoDecodeSMS(body))
+}
+
+/* func (m *Modem) handleSMS(line string) {
 	if m.DebugMode {
 		log.Println("💡 New SMS:", line)
 	}
@@ -572,7 +719,10 @@ func (m *Modem) handleSMS(line string) {
 		return
 	}
 	index := strings.TrimSpace(parts[1])
-	m.send("AT+CMGF=1")
+
+	// Wait a moment for the message to be fully written to memory
+	time.Sleep(500 * time.Millisecond)
+
 	msg, _ := m.send("AT+CMGR=" + index)
 
 	lines := strings.SplitSeq(msg, "\n")
@@ -589,8 +739,8 @@ func (m *Modem) handleSMS(line string) {
 		}
 	}
 
-	m.send("AT+CMGD=" + index)
-}
+	// m.send("AT+CMGD=" + index)
+}*/
 
 // unused but registered
 func (m *Modem) handleConnectionType(line string) {
@@ -631,7 +781,7 @@ func (m *Modem) handleConnectionType(line string) {
 			m.Connected = true
 		} else {
 			m.NetworkGeneration = ""
-			m.Carrier = "No Service"
+			m.Carrier = "Searching..."
 			m.Connected = false
 		}
 	}
@@ -689,12 +839,14 @@ func (m *Modem) MonitorEvents() {
 	}
 }
 
-func (m *Modem) HandleEvent(line string) {
-	line = strings.TrimSpace(line)
-	for prefix, handler := range m.handlers {
-		if strings.HasPrefix(line, prefix) {
-			go handler(line) // Optional: make it async
-			break
+func (m *Modem) HandleEvent(event string) {
+	lines := strings.SplitSeq(strings.TrimSpace(event), "\n")
+	for line := range lines {
+		for prefix := range m.handlers {
+			if strings.HasPrefix(line, prefix) {
+				go m.handlers[prefix](line)
+				break
+			}
 		}
 	}
 }
@@ -705,13 +857,6 @@ func Run(debug bool) *Modem {
 		log.Println(err)
 		return nil
 	}
-
-	if err := modem.SetupSMSNotifications(); err != nil {
-		log.Println("⚠️ Failed to set SMS notifications:", err)
-	}
-
-	// Re-enable network quality reports
-	modem.send("AT+AUTOCSQ=1,1")
 
 	go modem.MonitorEvents()
 
@@ -734,14 +879,25 @@ func (m *Modem) SwitchToPowerSaveMode() {
 	if m.DebugMode {
 		log.Println("📡 Modem switching to low power mode")
 	}
-	m.send("AT+AUTOCSQ=0,0")
-	m.send("AT+CSCLK=1")
+
+	for _, cmd := range []string{
+		"AT+AUTOCSQ=0,0",
+	} {
+		resp, _ := m.send(cmd)
+		m.HandleEvent(resp)
+	}
 }
 
 func (m *Modem) SwitchToNormalMode() {
 	if m.DebugMode {
 		log.Println("📡 Modem switching to normal power mode")
 	}
-	m.send("AT+AUTOCSQ=1,1")
-	m.send("AT+CSCLK=0")
+	for _, cmd := range []string{
+		"AT+CSQ",
+		"AT+COPS?",
+		"AT+AUTOCSQ=1,1",
+	} {
+		resp, _ := m.send(cmd)
+		m.HandleEvent(resp)
+	}
 }

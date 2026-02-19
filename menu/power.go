@@ -212,9 +212,7 @@ func (instance *PowerMenu) Run() {
 	}
 
 	instance.render()
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	instance.wg.Go(func() {
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -259,7 +257,7 @@ func (instance *PowerMenu) Run() {
 				}
 			}
 		}
-	}()
+	})
 }
 
 func (instance *PowerMenu) Pause() {

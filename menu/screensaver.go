@@ -95,9 +95,10 @@ func (instance *Screensaver) Run() {
 	instance.parent.Display.SetBrightness(0.0)
 	instance.parent.Timers["oled"].Stop()
 
-	// Switch CPU and modem modes
-	misc.SwitchToPowerSaveMode()
-	instance.parent.Modem.SwitchToPowerSaveMode()
+	// Switch modem mode
+	if instance.parent.Modem != nil {
+		instance.parent.Modem.SwitchToPowerSaveMode()
+	}
 
 	// Start the screensaver loop
 	instance.wg.Go(func() {
@@ -123,12 +124,10 @@ func (instance *Screensaver) Run() {
 		for {
 			select {
 			case <-instance.ctx.Done():
-				misc.SwitchToNormalMode()
 				return
 
 			case evt := <-instance.parent.KeypadEvents:
 				if evt.State {
-					misc.SwitchToNormalMode()
 					instance.parent.Timers["keypad"].Restart()
 					instance.parent.Timers["oled"].Restart()
 					instance.parent.Display.On()
@@ -156,9 +155,10 @@ func (instance *Screensaver) Pause() {
 func (instance *Screensaver) Stop() {
 	instance.cancelFn()
 
-	// Switch CPU and modem modes
-	misc.SwitchToNormalMode()
-	instance.parent.Modem.SwitchToNormalMode()
+	// Switch modem mode
+	if instance.parent.Modem != nil {
+		instance.parent.Modem.SwitchToNormalMode()
+	}
 
 	// Restore brightness
 	instance.parent.Display.SetBrightness(1.0)

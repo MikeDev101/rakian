@@ -23,12 +23,13 @@ import (
 
 	"github.com/Wifx/gonetworkmanager/v3"
 	"github.com/glebarez/sqlite"
+	"github.com/godbus/dbus/v5"
 	"gorm.io/gorm"
 )
 
 // go build -ldflags "-X 'main.DEBUG_MODE=false'" .
 var DEBUG_MODE string = "true"
-var FW_VERSION string = "0.1.17 (2.13.2026)"
+var FW_VERSION string = "0.1.18 (2.17.2026)"
 var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
 var SPRITE_LIST = []string{
 
@@ -95,10 +96,16 @@ var SPRITE_LIST = []string{
 	"home/Settings",
 	"home/Tones",
 
+	// Text entry
+	"uppercase",
+	"lowercase",
+	"numbers",
+
 	// Misc sprites
 	"alert",
 	"ok",
 	"info",
+	"loading",
 	"prohibited",
 	"low_battery",
 	"very_low_battery",
@@ -111,7 +118,6 @@ var SPRITE_LIST = []string{
 
 func exit() {
 	// DO NOT TOUCH
-	misc.SwitchToNormalMode()
 	if DEBUG_MODE == "true" {
 		log.Println("👋 Goodbye")
 		os.Exit(0)
@@ -132,7 +138,6 @@ func main() {
 	// Handle system exit
 	defer exit()
 	debug := (DEBUG_MODE == "true")
-	misc.SwitchToNormalMode()
 
 	// Setup crash logging in deploy mode
 	if !debug {
@@ -162,7 +167,30 @@ func main() {
 		panic(err)
 	}
 
-	wifi_device, err := nm.GetDeviceByIpIface("wlan0")
+	devices, err := nm.GetDevices()
+	if err != nil {
+		panic(err)
+	}
+
+	var wifi_device_raw dbus.ObjectPath
+	for _, device := range devices {
+
+		device_interface, err := device.GetPropertyInterface()
+		if err != nil {
+			panic(err)
+		}
+
+		if device_interface == "wlan0" {
+			wifi_device_raw = device.GetPath()
+			break
+		}
+	}
+
+	if wifi_device_raw == "" {
+		panic("No wifi device found")
+	}
+
+	wifi_device, err := gonetworkmanager.NewDeviceWireless(wifi_device_raw)
 	if err != nil {
 		panic(err)
 	}
@@ -260,6 +288,25 @@ func main() {
 		wifi_device,
 	)
 
+	// Register menus
+	menus.Register("power", menus.NewPowerMenu())
+	menus.Register("home", menus.NewHomeMenu())
+	menus.Register("home_selection", menus.NewHomeSelectionMenu())
+	menus.Register("dialer", menus.NewDialerMenu())
+	menus.Register("phone", menus.NewPhoneMenu())
+	menus.Register("ring", menus.NewRingMenu())
+	menus.Register("dummy", menus.NewDummyMenu())
+	menus.Register("screensaver", menus.NewScreensaver())
+	menus.Register("low_battery", menus.NewLowBatteryAlert())
+	menus.Register("dead_battery", menus.NewDeadBatteryAlert())
+	menus.Register("very_low_battery", menus.NewVeryLowBatteryAlert())
+	menus.Register("battery_charging", menus.NewBatteryChargingAlert())
+	menus.Register("battery_charged", menus.NewBatteryChargedAlert())
+	menus.Register("calculator", menus.NewCalculatorMenu())
+	menus.Register("selector", menus.NewSelector())
+	menus.Register("settings", menus.NewSettingsMenu())
+	menus.Register("phonebook", menus.NewPhonebookMenu())
+
 	// Setup global required keys
 	menus.Set("DebugMode", (debug))
 	menus.Set("FirmwareVersion", FW_VERSION)
@@ -272,6 +319,7 @@ func main() {
 	menus.Set("BatteryPercent", 0)
 	menus.Set("BatteryScaledPercent", 0)
 	menus.Set("BatteryCharging", false)
+	menus.Set("BluetoothEnabled", false)
 
 	// Load fonts
 	display.Load_Font_Time()
@@ -327,6 +375,22 @@ func main() {
 				menus.Set("WiFi_SSID", ssid)
 				menus.Set("WiFi_Strength", strength)
 				menus.Set("WiFi_IP", ipaddr)
+			}
+		}
+	}()
+
+	// Set initial bluetooth state
+	bt_enabled := misc.IsBluetoothEnabled()
+	menus.Set("BluetoothEnabled", bt_enabled)
+
+	// Update bluetooth state
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(100 * time.Millisecond):
+				menus.Set("BluetoothEnabled", misc.IsBluetoothEnabled())
 			}
 		}
 	}()
@@ -399,10 +463,7 @@ func main() {
 						chargingBattShown = true
 						log.Println("🪫 CHARGING")
 						menus.Set("BatteryCharging", true)
-						select {
-						case BatteryChargingChan <- true:
-						default:
-						}
+						BatteryChargingChan <- true
 					}
 
 				} else if last_state && !charging {
@@ -421,10 +482,7 @@ func main() {
 						fullBattShown = true
 						log.Print("🪫 FULL BATTERY")
 						menus.Set("BatteryCharging", false)
-						select {
-						case BatteryChargedChan <- true:
-						default:
-						}
+						BatteryChargedChan <- true
 					}
 				} else if capacity <= 1 {
 					log.Print("🪫 BATTERY EMPTY")
@@ -435,19 +493,13 @@ func main() {
 					if now.Sub(lastVeryLowBattTime) >= 10*time.Minute {
 						lastVeryLowBattTime = now
 						log.Print("🪫 VERY LOW BATTERY")
-						select {
-						case VeryLowBattChan <- true:
-						default:
-						}
+						VeryLowBattChan <- true
 					}
 				} else if capacity <= 25 {
 					if now.Sub(lastLowBattTime) >= 10*time.Minute {
 						lastLowBattTime = now
 						log.Print("🪫 LOW BATTERY")
-						select {
-						case LowBattChan <- true:
-						default:
-						}
+						LowBattChan <- true
 					}
 				}
 			}
@@ -475,6 +527,9 @@ func main() {
 	menus.Timers["keypad"] = timers.New(ctx, 5*time.Second, false, func() {
 		misc.KeyLightsOff()
 	})
+
+	// Run home menu
+	menus.Push("home")
 
 	// Configure power event handlers
 	go func() {
@@ -516,28 +571,7 @@ func main() {
 		}
 	}()
 
-	// Register menus
-	menus.Register("power", menus.NewPowerMenu())
-	menus.Register("home", menus.NewHomeMenu())
-	menus.Register("home_selection", menus.NewHomeSelectionMenu())
-	menus.Register("dialer", menus.NewDialerMenu())
-	menus.Register("phone", menus.NewPhoneMenu())
-	menus.Register("ring", menus.NewRingMenu())
-	menus.Register("dummy", menus.NewDummyMenu())
-	menus.Register("screensaver", menus.NewScreensaver())
-	menus.Register("low_battery", menus.NewLowBatteryAlert())
-	menus.Register("dead_battery", menus.NewDeadBatteryAlert())
-	menus.Register("very_low_battery", menus.NewVeryLowBatteryAlert())
-	menus.Register("battery_charging", menus.NewBatteryChargingAlert())
-	menus.Register("battery_charged", menus.NewBatteryChargedAlert())
-	menus.Register("calculator", menus.NewCalculatorMenu())
-	menus.Register("selector", menus.NewSelector())
-	menus.Register("settings", menus.NewSettingsMenu())
-	menus.Register("phonebook", menus.NewPhonebookMenu())
-
-	// Run home menu
-	menus.Push("home")
-
+	// Main block
 	if debug {
 		log.Println("🚀 Starting main() loop - press Ctrl+C to exit")
 	}
