@@ -1,7 +1,7 @@
 <img width="433" height="85" alt="preview" src="https://github.com/user-attachments/assets/f298ce39-8bf7-46a4-8dcc-483036c4a403" />
 
 
-**Rakian** is a Nokia Series 20-inspired Operating System built using Go.
+**Rakian** is a Nokia Series 20-inspired Operating System built using Go, powered by Armbian.
 
 > [!WARNING]
 > This project is in an early alpha stage and is NOT ready for use.
@@ -27,10 +27,11 @@ The rest is a bunch of glue logic and power components.
 * Fonts
 * Basic call functionality - Dial, Answer, Key-in during calls, End/Decline
 * Menu navigation
+* WiFi/Bluetooth management
 
 # Work-in-progress
 * Settings
-* Network management (WiFi, Cellular)
+* Network management (Cellular)
 * Applications/Games
 * Phonebook
 * Call Registry
@@ -42,4 +43,3 @@ The rest is a bunch of glue logic and power components.
 * Generic platform builder?
 * Device tree-based configuration
 * Minimal initramfs for early-on controls
-* Barebones Linux distro toolkit as a replacement for bloated Raspbian
