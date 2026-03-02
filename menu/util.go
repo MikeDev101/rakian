@@ -15,12 +15,6 @@ const (
 	T9Numbers   = 2
 )
 
-type InputPromptArgs struct {
-	Title           string
-	CharacterLimit  int
-	PhoneNumberOnly bool
-}
-
 func (m *Menu) PlayAlert() {
 	if m.Get("BeepOnly").(bool) {
 		m.Player.Stop()

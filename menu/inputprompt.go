@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+type InputPromptArgs struct {
+	Title           string
+	DefaultValue    string
+	CharacterLimit  int
+	PhoneNumberOnly bool
+}
+
 func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) string {
 
 	// Text entry handler
@@ -15,6 +22,9 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 	cursorPos := 0
 	scrollOffset := 0
 	display := instance.Display
+
+	// Fill in default value
+	input = append(input, []rune(args.DefaultValue)...)
 
 	// Key mapping
 	keyMap := map[rune]string{
