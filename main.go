@@ -29,7 +29,7 @@ import (
 
 // go build -ldflags "-X 'main.DEBUG_MODE=false'" .
 var DEBUG_MODE string = "true"
-var FW_VERSION string = "0.1.19 (2.28.2026)"
+var FW_VERSION string = "0.1.20 (3.2.2026)"
 var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
 
 const (
