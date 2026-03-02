@@ -42,6 +42,10 @@ func (instance *PhoneMenu) Label() string {
 func (instance *PhoneMenu) render() {
 	m := instance.parent
 	display := m.Display
+
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	display.Clear(lcd.White)
 	m.RenderStateCommon()
 

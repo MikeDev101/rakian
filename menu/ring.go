@@ -37,6 +37,10 @@ func (instance *RingMenu) Label() string {
 func (instance *RingMenu) render() {
 	m := instance.parent
 	display := m.Display
+
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	display.Clear(lcd.White)
 	m.RenderStateCommon()
 

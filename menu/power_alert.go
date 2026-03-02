@@ -72,6 +72,11 @@ func (instance *GenericAlert) Run() {
 		panic("Attempted to call (*GenericAlert).Run() before (*GenericAlert).Configure()!")
 	}
 
+	m := instance.parent
+	display := m.Display
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	// Reset context
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 

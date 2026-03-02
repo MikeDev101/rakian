@@ -38,6 +38,10 @@ func (instance *CalculatorMenu) Label() string {
 func (instance *CalculatorMenu) render() {
 	m := instance.parent
 	display := m.Display
+
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	display.Clear(lcd.White)
 
 	m.RenderHeader("Calculator")

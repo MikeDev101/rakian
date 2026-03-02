@@ -47,6 +47,9 @@ func (instance *SettingsMenu) RenderAbout() {
 	m := instance.parent
 	display := m.Display
 
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	display.Clear(lcd.White)
 	m.RenderHeader("About")
 
@@ -66,6 +69,9 @@ func (instance *SettingsMenu) RenderAbout() {
 func (instance *SettingsMenu) RenderInternetStatus(state_msg string, network_info gonetworkmanager.ActiveConnection) {
 	m := instance.parent
 	display := m.Display
+
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
 
 	display.Clear(lcd.White)
 	m.RenderHeader("Internet Status")
@@ -768,6 +774,13 @@ func (instance *SettingsMenu) handleBtSavedAction(selection_path []string) {
 func (instance *SettingsMenu) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*SettingsMenu).Run() before (*SettingsMenu).Configure()!")
+	}
+
+	m := instance.parent
+	display := m.Display
+
+	if display.DrawLock.TryLock() {
+		display.DrawLock.Unlock()
 	}
 
 	log.Println("⚙️ Settings started")

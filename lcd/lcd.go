@@ -59,7 +59,7 @@ type LCD struct {
 	cmd_lock       *sync.Mutex
 	data_lock      *sync.Mutex
 	spi_lock       *sync.Mutex
-	draw_lock      *sync.Mutex
+	DrawLock       *sync.Mutex
 }
 
 // Alignment Constants
@@ -129,7 +129,7 @@ func New(dc, rst rpio.Pin) *LCD {
 		fb_lock:        &sync.Mutex{},
 		cmd_lock:       &sync.Mutex{},
 		data_lock:      &sync.Mutex{},
-		draw_lock:      &sync.Mutex{},
+		DrawLock:       &sync.Mutex{},
 	}
 
 	dc.Output()

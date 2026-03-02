@@ -30,7 +30,11 @@ func (instance *VeryLowBatteryAlert) Label() string {
 }
 
 func (instance *VeryLowBatteryAlert) render() {
-	instance.parent.RenderAnimatedAlert("very_low_battery", instance.ctx, []string{"Please", "recharge", "soon"})
+	m := instance.parent
+	display := m.Display
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+	m.RenderAnimatedAlert("very_low_battery", instance.ctx, []string{"Please", "recharge", "soon"})
 }
 
 func (instance *VeryLowBatteryAlert) Configure() {

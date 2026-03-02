@@ -51,11 +51,15 @@ func (instance *HomeSelectionMenu) Label() string {
 }
 
 func (instance *HomeSelectionMenu) render() {
-	display := instance.parent.Display
+	m := instance.parent
+	display := m.Display
 	label := instance.options[instance.selection][0]
 
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	display.Clear(lcd.White)
-	instance.parent.RenderFooter("Select", true)
+	m.RenderFooter("Select", true)
 
 	font := display.Use_Font_Small_Bold()
 	display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", int(instance.selection+1)), false, lcd.AlignLeft, lcd.AlignNone)

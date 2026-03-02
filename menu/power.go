@@ -47,10 +47,14 @@ func (instance *PowerMenu) ConfigureWithArgs(args ...any) {
 }
 
 func (instance *PowerMenu) Run() {
-	m := instance.parent
 	if !instance.configured {
 		panic("Attempted to call (*PowerMenu).Run() before (*PowerMenu).Configure()!")
 	}
+
+	m := instance.parent
+	display := m.Display
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
 
 	log.Println("🔋 Power menu started")
 

@@ -29,7 +29,11 @@ func (instance *BatteryChargingAlert) Label() string {
 }
 
 func (instance *BatteryChargingAlert) render() {
-	instance.parent.RenderAnimatedAlert("charging", instance.ctx, []string{"Battery", "charging"})
+	m := instance.parent
+	display := m.Display
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+	m.RenderAnimatedAlert("charging", instance.ctx, []string{"Battery", "charging"})
 }
 
 func (instance *BatteryChargingAlert) Configure() {

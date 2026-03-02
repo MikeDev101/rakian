@@ -36,6 +36,9 @@ func (instance *HomeMenu) render() {
 	m := instance.parent
 	display := m.Display
 
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	display.Clear(lcd.White)
 	m.RenderStateCommon()
 

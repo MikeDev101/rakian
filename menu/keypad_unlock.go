@@ -43,9 +43,15 @@ func (instance *KeypadUnlockMenu) Run() {
 		panic("Attempted to call (*KeypadUnlockMenu).Run() before (*KeypadUnlockMenu).Configure()!")
 	}
 
+	m := instance.parent
+	display := m.Display
+
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	// Create animation context and play the unlock guide animation
 	animCtx, animCancel := context.WithCancel(instance.ctx)
-	go instance.parent.RenderAnimatedAlert("keypad_unlock_info", animCtx, []string{"Now press", "the * key"})
+	go m.RenderAnimatedAlert("keypad_unlock_info", animCtx, []string{"Now press", "the * key"})
 
 	instance.wg.Add(1)
 	go func() {

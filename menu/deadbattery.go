@@ -30,7 +30,11 @@ func (instance *DeadBatteryAlert) Label() string {
 }
 
 func (instance *DeadBatteryAlert) render() {
-	instance.parent.RenderAlert("dead_battery", []string{"Battery", "empty"})
+	m := instance.parent
+	display := m.Display
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+	m.RenderAlert("empty_battery", []string{"Battery", "empty"})
 }
 
 func (instance *DeadBatteryAlert) Configure() {

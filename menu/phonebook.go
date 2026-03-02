@@ -82,12 +82,17 @@ func (instance *PhonebookMenu) Run() {
 		panic("Attempted to call (*PhonebookMenu).Run() before (*PhonebookMenu).Configure()!")
 	}
 
+	m := instance.parent
+	display := m.Display
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
+
 	log.Println("📱 Phonebook started")
 
 	for {
-		selection := instance.parent.ShowSelector(*instance.default_args, instance.ctx)
+		selection := m.ShowSelector(*instance.default_args, instance.ctx)
 		if selection == nil {
-			instance.parent.Pop()
+			m.Pop()
 			return
 		}
 
@@ -95,7 +100,7 @@ func (instance *PhonebookMenu) Run() {
 			action := instance.PhonebookMain(selection.SelectionPath)
 			switch action {
 			case PhonebookActionExit:
-				instance.parent.Pop()
+				m.Pop()
 				return
 			case PhonebookActionSubmenuPushed:
 				// Do nothing

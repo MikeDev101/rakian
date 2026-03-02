@@ -39,6 +39,8 @@ func (instance *DialerMenu) Label() string {
 func (instance *DialerMenu) render() {
 	m := instance.parent
 	display := m.Display
+	defer display.DrawLock.Unlock()
+	display.DrawLock.Lock()
 	display.Clear(lcd.White)
 	m.RenderStateCommon()
 	display.DrawTextWrapped(8, 10, 80, 40, display.Use_Font_Large_Bold(), instance.dial_number, false, lcd.WrapRight, lcd.WrapUp)
