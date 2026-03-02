@@ -2,6 +2,7 @@ package menu
 
 import (
 	"context"
+	"fmt"
 	"lcd"
 	"misc"
 	"strings"
@@ -70,9 +71,12 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 			display.DrawImageAligned(display.Use_Sprites()[t9Map[t9Mode]], 13, 0, lcd.AlignNone, lcd.AlignNone)
 		}
 
-		// Draw label
+		// Draw labels
 		font := display.Use_Font_Small_Bold()
 		display.DrawTextWrapped(0, 8, 84, 16, font, args.Title, false, lcd.WrapDown, lcd.WrapLeft)
+		if args.CharacterLimit > 0 {
+			display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", args.CharacterLimit-len(input)), false, lcd.AlignLeft, lcd.AlignBelow)
+		}
 
 		// Draw box
 		display.SetColor(lcd.Black)
@@ -112,11 +116,51 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 
 	render()
 
+	cancelChan := make(chan struct{})
+	var cTimer *time.Timer
+	defer func() {
+		if cTimer != nil {
+			cTimer.Stop()
+		}
+	}()
+
 	for {
 		select {
+		case <-cancelChan:
+			return ""
 		case <-ctx.Done():
 			return ""
 		case evt := <-instance.KeypadEvents:
+			if evt.Key == 'C' {
+				if evt.State {
+					if cTimer != nil {
+						cTimer.Stop()
+					}
+					cTimer = time.AfterFunc(1*time.Second, func() {
+						close(cancelChan)
+					})
+
+					misc.KeyLightsOn()
+					go instance.PlayKey()
+
+					lastKey = 0
+					if len(input) > 0 {
+						if cursorPos > 0 {
+							input = append(input[:cursorPos-1], input[cursorPos:]...)
+							cursorPos--
+						}
+						render()
+					} else {
+						return ""
+					}
+				} else {
+					if cTimer != nil {
+						cTimer.Stop()
+					}
+				}
+				continue
+			}
+
 			if !evt.State {
 				continue
 			}
@@ -128,17 +172,6 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 			switch evt.Key {
 			case 'S':
 				return string(input)
-			case 'C':
-				lastKey = 0
-				if len(input) > 0 {
-					if cursorPos > 0 {
-						input = append(input[:cursorPos-1], input[cursorPos:]...)
-						cursorPos--
-					}
-					render()
-				} else {
-					return ""
-				}
 			case 'P':
 				go instance.Push("power")
 				return ""
@@ -239,6 +272,8 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 						case 'D': // Right
 							if selIdx < len(symbols)-1 {
 								selIdx++
+							} else if selIdx == len(symbols)-1 {
+								selIdx = 0
 							}
 						case '2': // Up
 							if selIdx >= 10 {

@@ -547,11 +547,11 @@ func (instance *SettingsMenu) handlePairDevice() int {
 
 func (instance *SettingsMenu) handleConfigureAPN() int {
 	log.Println("⚙️ Configuring APN...")
-	newAPN := instance.parent.InputPrompt(InputPromptArgs{Title: "Enter APN"}, instance.ctx)
+	apn, _ := instance.parent.Get("APN").(string)
+	newAPN := instance.parent.InputPrompt(InputPromptArgs{Title: "Enter APN", DefaultValue: apn, CharacterLimit: 50}, instance.ctx)
 	if newAPN != "" {
 
 		// Check if currently connected
-		apn, _ := instance.parent.Get("APN").(string)
 		connected := misc.CheckCellularData(apn)
 		if connected {
 			// Disconnect from current APN
