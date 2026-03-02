@@ -48,12 +48,18 @@ func (instance *HomeMenu) render() {
 		} else if m.Phone.FlightMode {
 			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, lcd.AlignCenter, lcd.AlignBelow)
 		} else {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Bold(), m.Phone.Carrier, false, lcd.AlignCenter, lcd.AlignBelow)
+			font := display.Use_Font_Small_Bold()
+			if m.Phone.Carrier == "No service" {
+				font = display.Use_Font_Small_Plain()
+			}
+			display.DrawTextAligned(42, 8, font, m.Phone.Carrier, false, lcd.AlignCenter, lcd.AlignBelow)
 		}
 
 		if m.Phone.Roaming {
 			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, lcd.AlignCenter, lcd.AlignBelow)
 		}
+	} else {
+		display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Modem error", false, lcd.AlignCenter, lcd.AlignBelow)
 	}
 
 	if m.Get("KeypadLocked").(bool) {

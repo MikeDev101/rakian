@@ -113,6 +113,13 @@ func Run(debug bool, db *gorm.DB) *Modem {
 	instance.Modem = modems[0]
 	instance.OK = true
 
+	// Force enable the modem at startup
+	if err := instance.Modem.Enable(); err != nil {
+		log.Printf("⚠️ Failed to enable modem: %v", err)
+		instance.OK = false
+		return instance
+	}
+
 	// Check if the modem is in flight mode
 	instance.CheckFlightMode()
 
@@ -309,7 +316,7 @@ func (m *Modem) SyncVoicemails() {
 	log.Println("Modem registered. Waiting for vvmd Mailbox to initialize...")
 
 	// Try up to 5 times, waiting 2 seconds between tries
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		vvmd_obj := vvmd_session.Object("org.kop316.vvm", "/org/kop316/vvm/Mailbox/0")
 		vvmd_sync := vvmd_obj.Call("org.kop316.vvm.Mailbox.Sync", 0)
 
@@ -326,6 +333,12 @@ func (m *Modem) SyncVoicemails() {
 
 func (m *Modem) ListenToVvmdEvents() {
 	// vvmd runs on the user/session bus
+
+	// TODO:
+	/*
+	 * Figure out why this happens:
+	 * ⚠️ Failed to connect to Session Bus for vvmd: exec: "dbus-launch": executable file not found in $PATH
+	 */
 	conn, err := dbus.SessionBus()
 	if err != nil {
 		log.Printf("⚠️ Failed to connect to Session Bus for vvmd: %v", err)
@@ -594,6 +607,9 @@ func (m *Modem) GetCarrierAndRoaming() {
 			m.Registered = false
 			m.Roaming = false
 			m.SOS = false
+			if m.Carrier == "" {
+				m.Carrier = "No service"
+			}
 			if regState == modemmanager.MmModem3gppRegistrationStateSearching {
 				m.Carrier = "Searching"
 			}
@@ -601,6 +617,7 @@ func (m *Modem) GetCarrierAndRoaming() {
 		default:
 			m.Roaming = false
 		}
+		log.Println("Registration state:", regState)
 		log.Println("Registered: ", m.Registered)
 		log.Println("SOS: ", m.SOS)
 		log.Println("Roaming: ", m.Roaming)
@@ -901,6 +918,8 @@ func (m *Modem) ProcessEvents() {
 			case modemmanager.MmModemStateRegistered:
 				log.Println("   -> Modem is registered to the network!")
 				go m.SyncVoicemails()
+			case modemmanager.MmModemStateEnabled:
+				log.Println("   -> Modem is enabled!")
 			case modemmanager.MmModemStateSearching:
 				log.Println("   -> Modem is searching for a network...")
 			case modemmanager.MmModemStateLocked:

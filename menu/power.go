@@ -3,6 +3,7 @@ package menu
 import (
 	"context"
 	"log"
+	"misc"
 	"sync"
 	"time"
 )
@@ -119,17 +120,22 @@ func (instance *PowerMenu) Run() {
 
 	case "Flight mode":
 		if m.Phone.OK {
+			apn := m.Get("APN").(string)
 			if m.Phone.FlightMode {
-				go m.Phone.SetFlightMode(false)
-				m.RenderAnimatedAlert("ok", instance.ctx, []string{"Flight", "mode off"})
+				go m.RenderAnimatedAlert("ok", instance.ctx, []string{"Leaving", "flight", "mode"})
+				go m.PlayAccepted()
+				m.Phone.SetFlightMode(false)
+				if m.Get("WasDataEnabled").(bool) {
+					misc.SetCellularDataState(apn, true)
+				}
 			} else {
-				go m.Phone.SetFlightMode(true)
-				m.RenderAnimatedAlert("ok", instance.ctx, []string{"Flight", "mode on"})
+				go m.RenderAnimatedAlert("ok", instance.ctx, []string{"Entering", "flight", "mode"})
+				go m.PlayAccepted()
+				misc.SetCellularDataState(apn, false)
+				m.Phone.SetFlightMode(true)
 			}
-			go m.PlayAccepted()
 			time.Sleep(2 * time.Second)
 		}
-
 		go m.Pop()
 		return
 	}

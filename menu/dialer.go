@@ -145,18 +145,17 @@ func (instance *DialerMenu) Run() {
 					}
 
 					if !m.Phone.OK {
-						instance.ExitWithAlert([]string{"No", "service!"})
-						go m.PlayAlert()
-						time.Sleep(3 * time.Second)
-						go m.Pop()
+						instance.ExitWithAlert([]string{"No", "service"})
 						return
 					}
 
 					if m.Phone.FlightMode {
-						instance.ExitWithAlert([]string{"Flight", "mode", "enabled."})
-						go m.PlayAlert()
-						time.Sleep(3 * time.Second)
-						go m.Pop()
+						instance.ExitWithAlert([]string{"Flight", "mode", "enabled"})
+						return
+					}
+
+					if !m.Phone.Registered {
+						instance.ExitWithAlert([]string{"No", "service"})
 						return
 					}
 
@@ -182,9 +181,6 @@ func (instance *DialerMenu) Run() {
 
 					if !m.Phone.Registered {
 						instance.ExitWithAlert([]string{"No", "service!"})
-						go m.PlayAlert()
-						time.Sleep(3 * time.Second)
-						go m.Pop()
 						return
 					}
 
@@ -241,6 +237,6 @@ func (instance *DialerMenu) cleanup() {
 func (instance *DialerMenu) ExitWithAlert(msg []string) {
 	instance.parent.RenderAlert("prohibited", msg)
 	go instance.parent.PlayAlert()
-	timers.SleepWithContext(3*time.Second, instance.ctx)
+	timers.SleepWithContext(2*time.Second, instance.ctx)
 	go instance.parent.Pop()
 }

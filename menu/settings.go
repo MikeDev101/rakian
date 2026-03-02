@@ -359,55 +359,79 @@ func (instance *SettingsMenu) handleJoinNetwork() int {
 }
 
 func (instance *SettingsMenu) handleToggle(selection_path []string) int {
+	m := instance.parent
 	animCtx, animCancel := context.WithCancel(instance.ctx)
 	switch selection_path[0] {
 	case "WLAN":
 		log.Println("⚙️ Toggling WiFi...")
-		state, err := instance.parent.NetworkManager.GetPropertyWirelessEnabled()
+		state, err := m.NetworkManager.GetPropertyWirelessEnabled()
 		if err != nil {
 			panic(err.Error())
 		}
 
-		if !instance.parent.Get("DebugMode").(bool) {
+		if !m.Get("DebugMode").(bool) {
 			if state {
-				instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "WLAN", "off"})
+				m.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "WLAN", "off"})
 			} else {
-				instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "WLAN", "on"})
+				m.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "WLAN", "on"})
 			}
 		} else {
-			instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Debug", "mode", "failsafe!"})
+			m.RenderAnimatedAlert("ok", animCtx, []string{"Debug", "mode", "failsafe!"})
 		}
-		go instance.parent.PlayAccepted()
+		go m.PlayAccepted()
 
 		// Don't accidentally disable WiFi if we're in debug mode
-		if !instance.parent.Get("DebugMode").(bool) {
-			go instance.parent.NetworkManager.SetPropertyWirelessEnabled(!state)
+		if !m.Get("DebugMode").(bool) {
+			go m.NetworkManager.SetPropertyWirelessEnabled(!state)
 		}
 		time.Sleep(2 * time.Second)
 
 	case "Cellular":
 		log.Println("⚙️ Toggling cellular data...")
+		apn, _ := m.Get("APN").(string)
 
-		apn, _ := instance.parent.Get("APN").(string)
+		// Check if there's service
+		if !m.Phone.OK {
+			go misc.SetCellularDataState(apn, false)
+			m.RenderAlert("prohibited", []string{"No", "service"})
+			go m.PlayAlert()
+			time.Sleep(2 * time.Second)
+			goto exit
+		} else if m.Phone.FlightMode {
+			go misc.SetCellularDataState(apn, false)
+			m.RenderAlert("prohibited", []string{"Flight", "mode", "enabled"})
+			go m.PlayAlert()
+			time.Sleep(2 * time.Second)
+			goto exit
+		} else if !m.Phone.Registered {
+			go misc.SetCellularDataState(apn, false)
+			m.RenderAlert("prohibited", []string{"No", "service"})
+			go m.PlayAlert()
+			time.Sleep(2 * time.Second)
+			goto exit
+		}
+
 		enabled := misc.CheckCellularData(apn)
 		if enabled {
-			instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "data", "off"})
+			m.Set("WasDataEnabled", false)
+			m.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "data", "off"})
 		} else {
-			instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "data", "on"})
+			m.Set("WasDataEnabled", true)
+			m.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "data", "on"})
 		}
 		go misc.ToggleCellularData(apn)
-		go instance.parent.PlayAccepted()
+		go m.PlayAccepted()
 		time.Sleep(2 * time.Second)
 
 	case "Bluetooth":
 		log.Println("⚙️ Toggling Bluetooth...")
 		enabled := misc.IsBluetoothEnabled()
 		if enabled {
-			instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "Bluetooth", "off"})
+			m.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "Bluetooth", "off"})
 		} else {
-			instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "Bluetooth", "on"})
+			m.RenderAnimatedAlert("ok", animCtx, []string{"Turning", "Bluetooth", "on"})
 		}
-		go instance.parent.PlayAccepted()
+		go m.PlayAccepted()
 		if enabled {
 			exec.Command("bluetoothctl", "power", "off").Run()
 		} else {
@@ -415,6 +439,8 @@ func (instance *SettingsMenu) handleToggle(selection_path []string) int {
 		}
 		time.Sleep(2 * time.Second)
 	}
+
+exit:
 	animCancel()
 	return SettingsActionShowSelector
 }

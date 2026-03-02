@@ -306,6 +306,10 @@ func main() {
 	menus.Set("WiFi_Strength", strength)
 	menus.Set("WiFi_IP", ipaddr)
 
+	// Set initial data enabled state
+	apn := menus.Get("APN").(string)
+	menus.Set("WasDataEnabled", misc.CheckCellularData(apn))
+
 	// Update WiFi state
 	go func() {
 		for {
