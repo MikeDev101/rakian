@@ -2,16 +2,17 @@ package menu
 
 import (
 	"context"
-	"image"
 	"log"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
 
 	"db"
 	"keypad"
-	"phone"
-	"sh1107"
+	"lcd"
+
+	"modem"
 	"timers"
 	"tones"
 
@@ -35,9 +36,8 @@ type Menu struct {
 	GlobalCancel  context.CancelFunc
 	DebugMode     bool
 
-	Display        *sh1107.SH1107
-	Sprites        map[string]image.Image
-	Modem          *phone.Modem
+	Display        *lcd.LCD
+	Phone          *modem.Modem
 	KeypadEvents   <-chan *keypad.KeypadEvent
 	Timers         map[string]*timers.ResettableTimer
 	Player         *tones.Tones
@@ -46,6 +46,7 @@ type Menu struct {
 	persistable    []string
 	NetworkManager gonetworkmanager.NetworkManager
 	WifiDevice     gonetworkmanager.DeviceWireless
+	SelectorStates map[string]*SelectorState
 
 	GlobalQuit func(uint8)
 
@@ -89,8 +90,8 @@ func (m *Menu) run(index int) {
 			}
 			if r := recover(); r != nil {
 				m.Player.Stop()
-				log.Printf("💥 Recovering from panic crash in goroutine %v", r)
-				m.RenderAlert("alert", []string{"Crashed!", "Returing to", "the home", "screen."})
+				log.Printf("💥 Recovering from panic crash in goroutine: %v\nStack Trace:\n%s", r, string(debug.Stack()))
+				m.RenderAlert("warning", []string{"Error!"})
 				go m.PlayAlert()
 				time.Sleep(3 * time.Second)
 				go m.ToStart()
@@ -239,6 +240,7 @@ func (m *Menu) Push(menu string) {
 		m.CurrentMenu.Pause()
 	}
 	m.Stack = append(m.Stack, target)
+	log.Println("Pushing menu:", menu)
 	m.run(len(m.Stack) - 1)
 }
 
@@ -261,6 +263,7 @@ func (m *Menu) PushWithArgs(menu string, args ...any) {
 		m.CurrentMenu.Pause()
 	}
 	m.Stack = append(m.Stack, target)
+	log.Println("Pushing menu with args:", menu)
 	m.run(len(m.Stack) - 1)
 }
 
@@ -288,6 +291,7 @@ func (m *Menu) Pop() {
 
 	// Pop the current menu
 	m.Stack = m.Stack[:len(m.Stack)-1]
+	log.Println("Popping menu")
 
 	if len(m.Stack) > 0 {
 		m.run(len(m.Stack) - 1)
@@ -323,6 +327,8 @@ func (m *Menu) PopWithArgs(args ...any) {
 
 	// Pop the current menu
 	m.Stack = m.Stack[:len(m.Stack)-1]
+
+	log.Println("Popping with args", args)
 
 	if len(m.Stack) > 0 {
 		m.run(len(m.Stack) - 1)
@@ -443,9 +449,8 @@ func waitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 func Init(
 	ctx context.Context,
 	debug bool,
-	display *sh1107.SH1107,
-	sprites map[string]image.Image,
-	modem *phone.Modem,
+	display *lcd.LCD,
+	phone *modem.Modem,
 	player *tones.Tones,
 	globalquit func(uint8),
 	keypadevents <-chan *keypad.KeypadEvent,
@@ -460,8 +465,7 @@ func Init(
 		GlobalContext:  menu_ctx,
 		GlobalCancel:   menu_cancel,
 		Display:        display,
-		Sprites:        sprites,
-		Modem:          modem,
+		Phone:          phone,
 		KeypadEvents:   keypadevents,
 		Timers:         make(map[string]*timers.ResettableTimer),
 		Player:         player,
@@ -471,6 +475,7 @@ func Init(
 		PersistStore:   persist,
 		NetworkManager: nm,
 		WifiDevice:     wifi_device,
+		SelectorStates: make(map[string]*SelectorState),
 		DebugMode:      debug,
 	}
 

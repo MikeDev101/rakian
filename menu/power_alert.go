@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	// "sh1107"
+	// "lcd"
 	// "timers"
 	"misc"
 )
@@ -72,9 +72,6 @@ func (instance *GenericAlert) Run() {
 		panic("Attempted to call (*GenericAlert).Run() before (*GenericAlert).Configure()!")
 	}
 
-	// Wait for display to be ready
-	instance.parent.Display.Ready()
-
 	// Reset context
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 
@@ -85,10 +82,6 @@ func (instance *GenericAlert) Run() {
 
 	for _, event := range currentEvents {
 		instance.parent.RenderAlert(event.Icon, event.Label)
-
-		if instance.parent.Get("CanVibrate").(bool) {
-			go misc.VibrateAlert(instance.parent.Player, instance.ctx)
-		}
 
 		if instance.parent.Get("CanRing").(bool) || instance.parent.Get("BeepOnly").(bool) {
 			switch event.BeepType {
@@ -119,7 +112,7 @@ func (instance *GenericAlert) Run() {
 		}
 	}
 
-	instance.parent.Timers["oled"].Restart()
+	instance.parent.Timers["screensaver"].Restart()
 	instance.parent.Timers["keypad"].Restart()
 }
 

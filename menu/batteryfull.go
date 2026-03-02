@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	// "sh1107"
+	// "lcd"
 	// "timers"
 	"misc"
 )
@@ -26,7 +26,7 @@ func (m *Menu) NewBatteryChargedAlert() *BatteryChargedAlert {
 }
 
 func (instance *BatteryChargedAlert) render() {
-	instance.parent.RenderAlert("battery_charged", []string{"Battery", "full"})
+	instance.parent.RenderAlert("battery_full", []string{"Battery", "charged"})
 }
 
 func (instance *BatteryChargedAlert) Configure() {
@@ -43,14 +43,6 @@ func (instance *BatteryChargedAlert) ConfigureWithArgs(args ...any) {
 func (instance *BatteryChargedAlert) Run() {
 	if !instance.configured {
 		panic("Attempted to call (*BatteryChargedAlert).Run() before (*BatteryChargedAlert).Configure()!")
-	}
-
-	if instance.parent.Get("CanVibrate").(bool) {
-		instance.wg.Add(1)
-		go func() {
-			defer instance.wg.Done()
-			misc.VibrateAlert(instance.parent.Player, instance.ctx)
-		}()
 	}
 
 	if instance.parent.Get("CanRing").(bool) || instance.parent.Get("BeepOnly").(bool) {
@@ -71,7 +63,7 @@ func (instance *BatteryChargedAlert) Run() {
 			return
 
 		case <-time.After(3 * time.Second):
-			instance.parent.Timers["oled"].Restart()
+			instance.parent.Timers["screensaver"].Restart()
 			instance.parent.Timers["keypad"].Restart()
 			go instance.parent.Pop()
 			return

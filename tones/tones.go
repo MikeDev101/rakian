@@ -2,22 +2,29 @@ package tones
 
 import (
 	"context"
+	"embed"
+	"fmt"
+	"io"
+	"log"
 	"math"
+	"sync"
 	"time"
 
-	"periph.io/x/conn/v3/gpio"
-	"periph.io/x/conn/v3/gpio/gpioreg"
-	"periph.io/x/conn/v3/physic"
-	"periph.io/x/host/v3"
+	"github.com/ebitengine/oto/v3"
+	"github.com/hajimehoshi/go-mp3"
 )
 
+//go:embed static/*
+var static_fs embed.FS
+
 type Tones struct {
-	pout     gpio.PinOut
-	vibrator gpio.PinOut
+	ctx        *oto.Context
+	tonePlayer *oto.Player
+	mu         sync.Mutex
 }
 
 type Note struct {
-	Key      int
+	Key      float64
 	Duration time.Duration
 	Divider  uint8
 }
@@ -27,126 +34,196 @@ type Vibrate struct {
 	Duration time.Duration
 }
 
+const (
+	sampleRate   = 44100
+	channelCount = 2
+	format       = oto.FormatSignedInt16LE
+)
+
 func New() *Tones {
-	if _, err := host.Init(); err != nil {
-		panic(err)
+	op := &oto.NewContextOptions{
+		SampleRate:   sampleRate,
+		ChannelCount: channelCount,
+		Format:       format,
 	}
-
-	p := gpioreg.ByName("GPIO13")
-	if p == nil {
-		panic(" Failed to find tone pin!")
+	ctx, ready, err := oto.NewContext(op)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize oto: %v", err))
 	}
-
-	pout, ok := p.(gpio.PinOut)
-	if !ok {
-		panic(" Tone pin does not support PWM!")
-	}
-
-	/* vibrator_pin := gpioreg.ByName("GPIO12")
-	if vibrator_pin == nil {
-		panic(" Failed to find vibrator pin!")
-	}
-
-	if err := vibrator_pin.Out(gpio.Low); err != nil {
-		panic(err)
-	}*/
+	<-ready
 
 	return &Tones{
-		pout: pout,
-		// vibrator: vibrator_pin,
+		ctx: ctx,
 	}
 }
 
-func (t *Tones) starttone(freq physic.Frequency, divider uint8) {
-	if err := t.pout.PWM(gpio.DutyMax/gpio.Duty(divider), freq); err != nil {
-		panic(err)
+// Close should be called when your app shuts down to unmap memory safely
+func (t *Tones) Close() {
+	t.Stop()
+}
+
+type SineWave struct {
+	freq   float64
+	pos    int64
+	volume float64
+}
+
+func (s *SineWave) Read(buf []byte) (int, error) {
+	bytesPerSample := 4 // 16-bit stereo
+	numSamples := len(buf) / bytesPerSample
+
+	for i := 0; i < numSamples; i++ {
+		val := math.Sin(2*math.Pi*s.freq*float64(s.pos)/float64(sampleRate)) * s.volume
+		if val > 1 {
+			val = 1
+		} else if val < -1 {
+			val = -1
+		}
+		sample := int16(val * 32767)
+
+		buf[i*4] = byte(sample)
+		buf[i*4+1] = byte(sample >> 8)
+		buf[i*4+2] = byte(sample)
+		buf[i*4+3] = byte(sample >> 8)
+
+		s.pos++
 	}
+	return numSamples * bytesPerSample, nil
 }
 
-func (t *Tones) stoptone() {
-	t.pout.PWM(0, 0)
-}
+func (t *Tones) Tone(note float64, divider uint8) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
-func (t *Tones) startvibrate() {
-	/* if err := t.vibrator.Out(gpio.High); err != nil {
-		panic(err)
-	} */
-}
+	if t.tonePlayer != nil {
+		t.tonePlayer.SetVolume(0)
+		t.tonePlayer = nil
+	}
 
-func (t *Tones) stopvibrate() {
-	/* if err := t.vibrator.Out(gpio.Low); err != nil {
-		panic(err)
-	} */
+	if note <= 0 {
+		return
+	}
+
+	freq := note_to_freq(note)
+	vol := 2.0
+	if divider > 2 {
+		vol = 2.0 * (2.0 / float64(divider))
+	}
+
+	src := &SineWave{
+		freq:   freq,
+		pos:    0,
+		volume: vol,
+	}
+
+	t.tonePlayer = t.ctx.NewPlayer(src)
+	t.tonePlayer.SetVolume(1)
+	t.tonePlayer.Play()
 }
 
 func (t *Tones) Stop() {
-	t.stoptone()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.tonePlayer != nil {
+		t.tonePlayer.SetVolume(0)
+		t.tonePlayer = nil
+	}
 }
 
-func (t *Tones) Tone(note int, divider uint8) {
-	t.starttone(note_to_freq(note), divider)
-}
-
-func (t *Tones) StartVibrate() {
-	t.startvibrate()
-}
-
-func (t *Tones) StopVibrate() {
-	t.stopvibrate()
-}
-
-func note_to_freq(Note int) physic.Frequency {
+func note_to_freq(Note float64) float64 {
 	// MIDI Note 69 = A4 = 440Hz
-	return physic.Frequency(440*math.Pow(2, float64(Note-69)/12)) * physic.Hertz
+	return 440.0 * math.Pow(2, float64(Note-69)/12.0)
 }
 
 func (t *Tones) Play(ctx context.Context, notes []Note) {
 	for _, n := range notes {
 		select {
 		case <-ctx.Done():
-			t.stoptone()
+			t.Stop()
 			return
 		default:
+			// If Key is greater than 0, play the tone. Otherwise, treat it as a Rest.
 			if n.Key > 0 {
-				t.starttone(note_to_freq(n.Key), n.Divider)
+				t.Tone(n.Key, n.Divider)
 			} else {
-				t.stoptone()
+				t.Stop()
 			}
+
 			timer := time.NewTimer(n.Duration)
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				t.stoptone()
+				t.Stop()
 				return
 			case <-timer.C:
 			}
 		}
 	}
-	t.stoptone()
+	t.Stop()
 }
 
-func (t *Tones) Vibrate(ctx context.Context, states []Vibrate) {
-	for _, n := range states {
-		select {
-		case <-ctx.Done():
-			t.stopvibrate()
-			return
-		default:
-			if n.State {
-				t.startvibrate()
-			} else {
-				t.stopvibrate()
-			}
+func (t *Tones) PlayFile(path string) {
 
-			timer := time.NewTimer(n.Duration)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				t.stopvibrate()
-				return
-			case <-timer.C:
+	// Load the static file
+	path = "static/" + path + ".mp3"
+	f, err := static_fs.Open(path)
+	if err != nil {
+		log.Printf("⚠️ Failed to open static file: %v", err)
+		return
+	}
+
+	// Prepare the MP3 reader
+	var stream io.Reader
+	rs, ok := f.(io.ReadSeeker)
+	if !ok {
+		f.Close()
+		log.Printf("⚠️ Failed to seek static file: %v", err)
+		return
+	}
+
+	// Prepare the MP3 decoder
+	d, err := mp3.NewDecoder(rs)
+	if err != nil {
+		f.Close()
+		log.Printf("⚠️ Failed to decode static file: %v", err)
+		return
+	}
+	stream = d
+
+	// Play the MP3
+	wrappedStream := &fileStreamWrapper{Reader: stream, Closer: f}
+	t.ctx.NewPlayer(wrappedStream).Play()
+}
+
+type fileStreamWrapper struct {
+	io.Reader
+	io.Closer
+}
+
+// Read reads from the underlying io.Reader and rescales the samples to 16-bit signed little-endian.
+// It also closes the underlying io.Closer when the end of the stream is reached.
+// The rescaling is done as follows: val = sample * 3. If val > 32767, it is set to 32767.
+// If val < -32768, it is set to -32768. The resulting sample is then written back to p.
+// The returned error is the same as the one returned by the underlying io.Reader.Read method.
+// If the underlying io.Reader.Read method returns io.EOF, the underlying io.Closer is closed.
+func (f *fileStreamWrapper) Read(p []byte) (n int, err error) {
+	n, err = f.Reader.Read(p)
+	if n > 0 {
+		for i := 0; i < n-1; i += 2 {
+			sample := int16(uint16(p[i]) | uint16(p[i+1])<<8)
+			val := int32(sample) * 3
+			if val > 32767 {
+				val = 32767
+			} else if val < -32768 {
+				val = -32768
 			}
+			sample = int16(val)
+			p[i] = byte(sample)
+			p[i+1] = byte(sample >> 8)
 		}
 	}
-	t.stopvibrate()
+	if err == io.EOF {
+		f.Closer.Close()
+	}
+	return
 }

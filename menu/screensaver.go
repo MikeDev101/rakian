@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"lcd"
 	"misc"
-	"sh1107"
 )
 
 type Screensaver struct {
@@ -28,8 +28,8 @@ func (m *Menu) NewScreensaver() *Screensaver {
 
 func (instance *Screensaver) render() {
 	display := instance.parent.Display
-	display.Clear(sh1107.Black)
-	font := display.Use_Font16()
+	display.Clear(lcd.White)
+	font := display.Use_Font_Large_Bold()
 
 	// Draw something
 	// Read clock
@@ -52,11 +52,7 @@ func (instance *Screensaver) render() {
 	}
 
 	// Draw clock
-	display.DrawTextAligned(64, 55, font, clock_str, false, sh1107.AlignCenter, sh1107.AlignCenter)
-
-	// Display battery
-	font = display.Use_Font8_Normal()
-	display.DrawTextAligned(64, 75, font, fmt.Sprintf("%d %%", instance.parent.Get("BatteryPercent").(int)), false, sh1107.AlignCenter, sh1107.AlignCenter)
+	display.DrawTextAligned(42, 24, font, clock_str, false, lcd.AlignCenter, lcd.AlignCenter)
 
 	display.Render()
 }
@@ -92,16 +88,17 @@ func (instance *Screensaver) Run() {
 		log.Printf("⏾ Initial screensaver delay: %s", delay)
 	}
 
-	instance.parent.Display.SetBrightness(0.0)
-	instance.parent.Timers["oled"].Stop()
+	instance.parent.Timers["screensaver"].Stop()
 
 	// Switch modem mode
-	if instance.parent.Modem != nil {
+	/* if instance.parent.Modem != nil {
 		instance.parent.Modem.SwitchToPowerSaveMode()
-	}
+	} */
 
 	// Start the screensaver loop
-	instance.wg.Go(func() {
+	instance.wg.Add(1)
+	go func() {
+		defer instance.wg.Done()
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -118,9 +115,11 @@ func (instance *Screensaver) Run() {
 				instance.render()
 			}
 		}
-	})
+	}()
 
-	instance.wg.Go(func() {
+	instance.wg.Add(1)
+	go func() {
+		defer instance.wg.Done()
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -129,7 +128,7 @@ func (instance *Screensaver) Run() {
 			case evt := <-instance.parent.KeypadEvents:
 				if evt.State {
 					instance.parent.Timers["keypad"].Restart()
-					instance.parent.Timers["oled"].Restart()
+					instance.parent.Timers["screensaver"].Restart()
 					instance.parent.Display.On()
 					misc.KeyLightsOn()
 					go instance.parent.PlayKey()
@@ -138,12 +137,11 @@ func (instance *Screensaver) Run() {
 				}
 			}
 		}
-	})
+	}()
 }
 
 func (instance *Screensaver) Pause() {
 	instance.cancelFn()
-	instance.parent.Display.SetBrightness(1.0)
 	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
 		log.Println("⚠️ Screensaver pause timed out — goroutines may be stuck")
 		// Optional: escalate here
@@ -156,12 +154,9 @@ func (instance *Screensaver) Stop() {
 	instance.cancelFn()
 
 	// Switch modem mode
-	if instance.parent.Modem != nil {
-		instance.parent.Modem.SwitchToNormalMode()
-	}
-
-	// Restore brightness
-	instance.parent.Display.SetBrightness(1.0)
+	// if instance.parent.Modem != nil {
+	// 	instance.parent.Modem.SwitchToNormalMode()
+	//}
 
 	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
 		log.Println("⚠️ Screensaver stop timed out — goroutines may be stuck")

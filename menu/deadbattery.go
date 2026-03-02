@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	// "sh1107"
+	// "lcd"
 	// "timers"
 	"misc"
 )
@@ -50,14 +50,6 @@ func (instance *DeadBatteryAlert) Run() {
 
 	// Mask all further menus
 	instance.parent.Mask()
-
-	if instance.parent.Get("CanVibrate").(bool) {
-		instance.wg.Add(1)
-		go func() {
-			defer instance.wg.Done()
-			misc.VibrateAlert(instance.parent.Player, instance.ctx)
-		}()
-	}
 
 	if instance.parent.Get("CanRing").(bool) || instance.parent.Get("BeepOnly").(bool) {
 		instance.wg.Add(1)

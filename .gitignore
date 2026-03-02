@@ -33,3 +33,4 @@ go.work.sum
 
 # Built binary of Rakian
 rakian
+rakian_debugger
