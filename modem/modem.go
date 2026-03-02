@@ -1049,8 +1049,16 @@ func (m *Modem) HoldCall(call *Call) error {
 	if err != nil {
 		return err
 	}
+
+	// TODO: Needs to be tested
 	obj := conn.Object("org.freedesktop.ModemManager1", call.DBusPath)
-	return obj.Call("org.freedesktop.ModemManager1.Call.Hold", 0).Err
+	err = obj.Call("org.freedesktop.ModemManager1.Call.Hold", 0).Err
+
+	if err != nil {
+		log.Printf("⚠️ Failed to hold call: %v", err)
+	}
+
+	return err
 }
 
 func (m *Modem) UnholdCall(call *Call) error {
@@ -1061,6 +1069,14 @@ func (m *Modem) UnholdCall(call *Call) error {
 	if err != nil {
 		return err
 	}
+
+	// TODO: Needs to be tested
 	obj := conn.Object("org.freedesktop.ModemManager1", call.DBusPath)
-	return obj.Call("org.freedesktop.ModemManager1.Call.Resume", 0).Err
+	err = obj.Call("org.freedesktop.ModemManager1.Call.Unhold", 0).Err
+
+	if err != nil {
+		log.Printf("⚠️ Failed to unhold call: %v", err)
+	}
+
+	return err
 }
