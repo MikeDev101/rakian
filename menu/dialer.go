@@ -86,7 +86,7 @@ func (instance *DialerMenu) Run() {
 			return
 
 		case evt := <-m.KeypadEvents:
-			if evt.State {
+			if evt.State { // Key Press
 
 				m.Timers["keypad"].Reset()
 				m.Timers["screensaver"].Reset()
@@ -205,6 +205,8 @@ func (instance *DialerMenu) Run() {
 					}
 					go m.playDTMF(evt.Key)
 				}
+			} else { // Key Release
+				go m.stopDTMF(evt.Key)
 			}
 		}
 	}

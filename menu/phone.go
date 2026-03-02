@@ -131,7 +131,7 @@ func (instance *PhoneMenu) Run() {
 					return
 				}
 
-				if evt.State {
+				if evt.State { // Key Press
 
 					m.Timers["keypad"].Reset()
 					m.Timers["screensaver"].Reset()
@@ -240,6 +240,8 @@ func (instance *PhoneMenu) Run() {
 							m.Phone.SendDTMF(instance.call, string(evt.Key))
 						}
 					}
+				} else { // Key Release
+					go m.stopDTMF(evt.Key)
 				}
 			}
 		}

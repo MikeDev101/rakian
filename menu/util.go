@@ -1,15 +1,11 @@
 package menu
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"image"
 	"lcd"
 	"log"
-	"math"
-	"os/exec"
 	"time"
 )
 
@@ -198,56 +194,13 @@ func (instance *Menu) playDTMF(key rune) {
 		return
 	}
 
-	var f1, f2 float64
-	switch key {
-	case '1':
-		f1, f2 = 697, 1209
-	case '2':
-		f1, f2 = 697, 1336
-	case '3':
-		f1, f2 = 697, 1477
-	case '4':
-		f1, f2 = 770, 1209
-	case '5':
-		f1, f2 = 770, 1336
-	case '6':
-		f1, f2 = 770, 1477
-	case '7':
-		f1, f2 = 852, 1209
-	case '8':
-		f1, f2 = 852, 1336
-	case '9':
-		f1, f2 = 852, 1477
-	case '*':
-		f1, f2 = 941, 1209
-	case '0':
-		f1, f2 = 941, 1336
-	case '#':
-		f1, f2 = 941, 1477
-	default:
+	instance.Player.PlayDTMF(key)
+}
+
+func (instance *Menu) stopDTMF(key rune) {
+	// Don't generate tones if we're mute
+	if !instance.Get("CanRing").(bool) && !instance.Get("BeepOnly").(bool) {
 		return
 	}
-
-	const sampleRate = 44100
-	var duration = 200 * time.Millisecond
-
-	// Use shorter tones if we're in discreet mode
-	if instance.Get("BeepOnly").(bool) {
-		duration = 50 * time.Millisecond
-	}
-
-	numSamples := int(sampleRate * duration.Seconds())
-
-	buf := new(bytes.Buffer)
-	for i := 0; i < numSamples; i++ {
-		t := float64(i) / float64(sampleRate)
-		val := 0.5*math.Sin(2*math.Pi*f1*t) + 0.5*math.Sin(2*math.Pi*f2*t)
-		binary.Write(buf, binary.LittleEndian, int16(val*32767))
-	}
-
-	go func() {
-		cmd := exec.Command("aplay", "-f", "S16_LE", "-r", "44100", "-c", "1", "-q")
-		cmd.Stdin = buf
-		_ = cmd.Run()
-	}()
+	instance.Player.StopDTMF(key)
 }

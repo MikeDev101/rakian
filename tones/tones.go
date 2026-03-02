@@ -18,9 +18,10 @@ import (
 var static_fs embed.FS
 
 type Tones struct {
-	ctx        *oto.Context
-	tonePlayer *oto.Player
-	mu         sync.Mutex
+	ctx         *oto.Context
+	tonePlayer  *oto.Player
+	dtmfPlayers map[rune]*oto.Player
+	mu          sync.Mutex
 }
 
 type Note struct {
@@ -53,13 +54,44 @@ func New() *Tones {
 	<-ready
 
 	return &Tones{
-		ctx: ctx,
+		ctx:         ctx,
+		dtmfPlayers: make(map[rune]*oto.Player),
 	}
 }
 
 // Close should be called when your app shuts down to unmap memory safely
 func (t *Tones) Close() {
 	t.Stop()
+}
+
+type DTMFWave struct {
+	f1, f2 float64
+	pos    int64
+	volume float64
+}
+
+func (d *DTMFWave) Read(buf []byte) (int, error) {
+	bytesPerSample := 4 // 16-bit stereo
+	numSamples := len(buf) / bytesPerSample
+
+	for i := 0; i < numSamples; i++ {
+		tm := float64(d.pos) / float64(sampleRate)
+		val := (0.5*math.Sin(2*math.Pi*d.f1*tm) + 0.5*math.Sin(2*math.Pi*d.f2*tm)) * d.volume
+		if val > 1 {
+			val = 1
+		} else if val < -1 {
+			val = -1
+		}
+		sample := int16(val * 32767)
+
+		buf[i*4] = byte(sample)
+		buf[i*4+1] = byte(sample >> 8)
+		buf[i*4+2] = byte(sample)
+		buf[i*4+3] = byte(sample >> 8)
+
+		d.pos++
+	}
+	return numSamples * bytesPerSample, nil
 }
 
 type SineWave struct {
@@ -125,8 +157,13 @@ func (t *Tones) Stop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.tonePlayer != nil {
-		t.tonePlayer.SetVolume(0)
+		t.tonePlayer.Close()
 		t.tonePlayer = nil
+	}
+	// Also stop all DTMF tones
+	for key, player := range t.dtmfPlayers {
+		player.Close()
+		delete(t.dtmfPlayers, key)
 	}
 }
 
@@ -226,4 +263,75 @@ func (f *fileStreamWrapper) Read(p []byte) (n int, err error) {
 		f.Closer.Close()
 	}
 	return
+}
+
+func (t *Tones) PlayDTMF(key rune) {
+	var f1, f2 float64
+	switch key {
+	case '1':
+		f1, f2 = 697, 1209
+	case '2':
+		f1, f2 = 697, 1336
+	case '3':
+		f1, f2 = 697, 1477
+	case '4':
+		f1, f2 = 770, 1209
+	case '5':
+		f1, f2 = 770, 1336
+	case '6':
+		f1, f2 = 770, 1477
+	case '7':
+		f1, f2 = 852, 1209
+	case '8':
+		f1, f2 = 852, 1336
+	case '9':
+		f1, f2 = 852, 1477
+	case '*':
+		f1, f2 = 941, 1209
+	case '0':
+		f1, f2 = 941, 1336
+	case '#':
+		f1, f2 = 941, 1477
+	default:
+		return
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if _, ok := t.dtmfPlayers[key]; ok {
+		return // Already playing
+	}
+
+	src := &DTMFWave{
+		f1:     f1,
+		f2:     f2,
+		pos:    0,
+		volume: 0.5, // 50% volume
+	}
+
+	player := t.ctx.NewPlayer(src)
+	player.Play()
+
+	t.dtmfPlayers[key] = player
+}
+
+func (t *Tones) StopDTMF(key rune) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if player, ok := t.dtmfPlayers[key]; ok {
+		player.Close()
+		delete(t.dtmfPlayers, key)
+	}
+}
+
+func (t *Tones) StopAllDTMF() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for key, player := range t.dtmfPlayers {
+		player.Close()
+		delete(t.dtmfPlayers, key)
+	}
 }
