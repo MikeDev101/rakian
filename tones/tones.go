@@ -157,12 +157,12 @@ func (t *Tones) Stop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.tonePlayer != nil {
-		t.tonePlayer.Close()
+		t.tonePlayer.SetVolume(0)
 		t.tonePlayer = nil
 	}
 	// Also stop all DTMF tones
 	for key, player := range t.dtmfPlayers {
-		player.Close()
+		player.SetVolume(0)
 		delete(t.dtmfPlayers, key)
 	}
 }
@@ -229,7 +229,9 @@ func (t *Tones) PlayFile(path string) {
 
 	// Play the MP3
 	wrappedStream := &fileStreamWrapper{Reader: stream, Closer: f}
-	t.ctx.NewPlayer(wrappedStream).Play()
+	player := t.ctx.NewPlayer(wrappedStream)
+	player.SetVolume(1)
+	player.Play()
 }
 
 type fileStreamWrapper struct {
@@ -311,6 +313,7 @@ func (t *Tones) PlayDTMF(key rune) {
 	}
 
 	player := t.ctx.NewPlayer(src)
+	player.SetVolume(1)
 	player.Play()
 
 	t.dtmfPlayers[key] = player
@@ -321,7 +324,7 @@ func (t *Tones) StopDTMF(key rune) {
 	defer t.mu.Unlock()
 
 	if player, ok := t.dtmfPlayers[key]; ok {
-		player.Close()
+		player.SetVolume(0)
 		delete(t.dtmfPlayers, key)
 	}
 }
@@ -331,7 +334,7 @@ func (t *Tones) StopAllDTMF() {
 	defer t.mu.Unlock()
 
 	for key, player := range t.dtmfPlayers {
-		player.Close()
+		player.SetVolume(0)
 		delete(t.dtmfPlayers, key)
 	}
 }
