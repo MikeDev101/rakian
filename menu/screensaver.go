@@ -26,6 +26,10 @@ func (m *Menu) NewScreensaver() *Screensaver {
 	}
 }
 
+func (instance *Screensaver) Label() string {
+	return "Screensaver"
+}
+
 func (instance *Screensaver) render() {
 	display := instance.parent.Display
 	display.Clear(lcd.White)

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"lcd"
 	"misc"
 	"timers"
 )
@@ -25,11 +24,12 @@ func (m *Menu) NewDummyMenu() *DummyMenu {
 	}
 }
 
+func (instance *DummyMenu) Label() string {
+	return "Dummy Menu"
+}
+
 func (instance *DummyMenu) render() {
-	instance.parent.Display.Clear(lcd.White)
-	font := instance.parent.Display.Use_Font_Small_Bold()
-	instance.parent.Display.DrawText(50, 50, font, "DUMMY", false)
-	instance.parent.Display.Render()
+	// Do nothing since this is a template
 }
 
 func (instance *DummyMenu) Configure() {

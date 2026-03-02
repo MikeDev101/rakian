@@ -23,6 +23,10 @@ func (m *Menu) NewKeypadUnlockMenu() *KeypadUnlockMenu {
 	}
 }
 
+func (instance *KeypadUnlockMenu) Label() string {
+	return "Keypad Unlock Menu"
+}
+
 func (instance *KeypadUnlockMenu) Configure() {
 	// Reset context
 	instance.configured = true

@@ -28,6 +28,10 @@ func (m *Menu) NewHomeMenu() *HomeMenu {
 	}
 }
 
+func (instance *HomeMenu) Label() string {
+	return "Home Menu"
+}
+
 func (instance *HomeMenu) render() {
 	m := instance.parent
 	display := m.Display

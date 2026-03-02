@@ -46,6 +46,10 @@ func (m *Menu) NewHomeSelectionMenu() *HomeSelectionMenu {
 	}
 }
 
+func (instance *HomeSelectionMenu) Label() string {
+	return "Home Selection Menu"
+}
+
 func (instance *HomeSelectionMenu) render() {
 	display := instance.parent.Display
 	label := instance.options[instance.selection][0]

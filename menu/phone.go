@@ -35,6 +35,10 @@ func (m *Menu) NewPhoneMenu() *PhoneMenu {
 	}
 }
 
+func (instance *PhoneMenu) Label() string {
+	return "Phone Menu"
+}
+
 func (instance *PhoneMenu) render() {
 	m := instance.parent
 	display := m.Display

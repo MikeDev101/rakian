@@ -26,6 +26,7 @@ type MenuInstance interface {
 	Stop()                    // Exits the menu and destroys any existing state.
 	Configure()               // Required to be called before using Run(). Otherwise, a panic will occur.
 	ConfigureWithArgs(...any) // Can be called anytime to passthrough arguments.
+	Label() string
 }
 
 type Menu struct {

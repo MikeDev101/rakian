@@ -25,6 +25,10 @@ func (m *Menu) NewVeryLowBatteryAlert() *VeryLowBatteryAlert {
 	}
 }
 
+func (instance *VeryLowBatteryAlert) Label() string {
+	return "Very Low Battery Alert"
+}
+
 func (instance *VeryLowBatteryAlert) render() {
 	instance.parent.RenderAnimatedAlert("very_low_battery", instance.ctx, []string{"Please", "recharge", "soon"})
 }

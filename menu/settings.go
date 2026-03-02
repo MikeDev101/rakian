@@ -37,6 +37,10 @@ type SettingsMenu struct {
 	default_args   *SelectorArgs
 }
 
+func (instance *SettingsMenu) Label() string {
+	return "Settings Menu"
+}
+
 // RenderAbout renders the about screen, which displays the logo and version
 // of the Rakian OS. It also shows a line for checking for updates.
 func (instance *SettingsMenu) RenderAbout() {

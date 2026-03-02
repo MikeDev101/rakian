@@ -24,6 +24,10 @@ func (m *Menu) NewBatteryChargingAlert() *BatteryChargingAlert {
 	}
 }
 
+func (instance *BatteryChargingAlert) Label() string {
+	return "Battery Charging Alert"
+}
+
 func (instance *BatteryChargingAlert) render() {
 	instance.parent.RenderAnimatedAlert("charging", instance.ctx, []string{"Battery", "charging"})
 }

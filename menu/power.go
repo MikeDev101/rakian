@@ -32,6 +32,10 @@ func (m *Menu) NewPowerMenu() *PowerMenu {
 	}
 }
 
+func (instance *PowerMenu) Label() string {
+	return "Power Menu"
+}
+
 func (instance *PowerMenu) Configure() {
 	// Reset context
 	instance.configured = true

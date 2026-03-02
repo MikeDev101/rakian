@@ -25,6 +25,10 @@ func (m *Menu) NewDeadBatteryAlert() *DeadBatteryAlert {
 	}
 }
 
+func (instance *DeadBatteryAlert) Label() string {
+	return "Dead Battery Alert"
+}
+
 func (instance *DeadBatteryAlert) render() {
 	instance.parent.RenderAlert("dead_battery", []string{"Battery", "empty"})
 }

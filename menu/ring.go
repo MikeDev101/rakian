@@ -30,6 +30,10 @@ func (m *Menu) NewRingMenu() *RingMenu {
 	}
 }
 
+func (instance *RingMenu) Label() string {
+	return "Ring Menu"
+}
+
 func (instance *RingMenu) render() {
 	m := instance.parent
 	display := m.Display

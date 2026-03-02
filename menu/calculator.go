@@ -28,14 +28,11 @@ func (m *Menu) NewCalculatorMenu() *CalculatorMenu {
 	return &CalculatorMenu{
 		parent:           m,
 		lastAsteriskTime: time.Now(),
-		/*options: [][]string{
-			{"1. Equals"},
-			{"2. Clear"},
-			{"3. Exchange rate", "1. Foreign unit expressed as domestic units", "2. Domestic unit expressed as foreign units"},
-			{"4. To domestic"},
-			{"5. To foreign"},
-		},*/
 	}
+}
+
+func (instance *CalculatorMenu) Label() string {
+	return "Calculator Menu"
 }
 
 func (instance *CalculatorMenu) render() {

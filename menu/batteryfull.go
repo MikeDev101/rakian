@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	// "lcd"
-	// "timers"
 	"misc"
 )
 
@@ -23,6 +21,10 @@ func (m *Menu) NewBatteryChargedAlert() *BatteryChargedAlert {
 	return &BatteryChargedAlert{
 		parent: m,
 	}
+}
+
+func (instance *BatteryChargedAlert) Label() string {
+	return "Battery Fully Charged Alert"
 }
 
 func (instance *BatteryChargedAlert) render() {

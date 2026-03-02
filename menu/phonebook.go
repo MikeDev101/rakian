@@ -38,6 +38,7 @@ func (m *Menu) NewPhonebookMenu() *PhonebookMenu {
 				{"Search"},
 				{"Service Numbers"},
 				{"Erase"},
+				{"Erase all"},
 				{"Edit"},
 				{"Assign Tone"},
 			},
@@ -62,15 +63,15 @@ func (instance *PhonebookMenu) ConfigureWithArgs(args ...any) {
 func (instance *PhonebookMenu) PhonebookMain(selection_path []string) int {
 	switch selection_path[len(selection_path)-1] {
 	case "Search":
-		// TODO
+		// Show a Text entry prompt to search the phonebook
 	case "Service Numbers":
-		// TODO
+		// Show a selector prompt with all the loaded EmergencyNumbers from the modem
 	case "Erase":
-		// TODO
+		// Show a list of all contacts, allowing the user to erase them one at a time
 	case "Edit":
-		// TODO
+		// Show a list of all contacts, allowing the user to edit one
 	case "Assign Tone":
-		// TODO
+		// Show a list of all contacts, allowing the user to assign a tone to one
 	}
 
 	return PhonebookActionShowSelector
