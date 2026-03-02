@@ -5,7 +5,7 @@ BINARY="rakian"
 REMOTE_PATH="/root/rakian/rakian"
 
 echo "Compiling (Release Mode)..."
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o $BINARY -ldflags "-X 'main.DEBUG_MODE=false'" .
+GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -o $BINARY -ldflags "-X 'main.DEBUG_MODE=false'" .
 
 # Calculate local hash
 LOCAL_HASH=$(md5sum $BINARY | cut -d' ' -f1)
@@ -30,10 +30,10 @@ else
     ssh root@$TARGET "systemctl stop rakian.service; pkill rakian"
     
     echo "Uploading..."
-    scp -q ./$BINARY root@$TARGET:$REMOTE_PATH
+    scp ./$BINARY root@$TARGET:$REMOTE_PATH
     
     echo "Restarting service..."
-    ssh root@$TARGET "systemctl restart rakian.service"
+    ssh root@$TARGET "systemctl start rakian.service"
 fi
 
 echo "Deployment check complete."

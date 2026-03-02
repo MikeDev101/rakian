@@ -9,21 +9,19 @@ import (
 	"sync"
 	"time"
 
+	"lcd"
 	"misc"
-	"sh1107"
 )
 
 type CalculatorMenu struct {
-	ctx               context.Context
-	configured        bool
-	cancelFn          context.CancelFunc
-	parent            *Menu
-	wg                sync.WaitGroup
-	calc_input        []rune
-	calc_displayed    string
-	lastAsteriskTime  time.Time
-	process_selection bool
-	selection_path    []string
+	ctx              context.Context
+	configured       bool
+	cancelFn         context.CancelFunc
+	parent           *Menu
+	wg               sync.WaitGroup
+	calc_input       []rune
+	calc_displayed   string
+	lastAsteriskTime time.Time
 }
 
 func (m *Menu) NewCalculatorMenu() *CalculatorMenu {
@@ -41,17 +39,16 @@ func (m *Menu) NewCalculatorMenu() *CalculatorMenu {
 }
 
 func (instance *CalculatorMenu) render() {
-	display := instance.parent.Display
-	display.Clear(sh1107.Black)
+	m := instance.parent
+	display := m.Display
+	display.Clear(lcd.White)
 
-	font := display.Use_Font8_Normal()
-	display.DrawTextAligned(0, 20, font, "Calculator", false, sh1107.AlignRight, sh1107.AlignNone)
+	m.RenderHeader("Calculator")
+	m.RenderFooter("Options", true)
 
-	font = display.Use_Font8_Bold()
-	display.DrawTextAligned(64, 105, font, "Options", false, sh1107.AlignCenter, sh1107.AlignNone)
-	display.DrawText(0, 40, display.Use_Font16(), instance.calc_displayed, false)
+	display.DrawText(0, 12, display.Use_Font_Large_Bold(), instance.calc_displayed, false)
 
-	display.SetColor(sh1107.White)
+	display.SetColor(lcd.White)
 	display.SetLineWidth(1)
 	display.DrawLine(0, 33, 127, 33)
 	display.Stroke()
@@ -66,19 +63,6 @@ func (instance *CalculatorMenu) Configure() {
 }
 
 func (instance *CalculatorMenu) ConfigureWithArgs(args ...any) {
-
-	// Check if we have args
-	if len(args) > 0 {
-
-		// Most likely our arg is a SelectorReturn from the selector.
-		selection, ok := args[0].(*SelectorReturn)
-		if !ok {
-			panic("(*CalculatorMenu).ConfigureWithArgs() Type error: argument must be a *SelectorReturn type")
-		}
-
-		instance.process_selection = true
-		instance.selection_path = selection.SelectionPath
-	}
 
 	instance.Configure()
 }
@@ -209,75 +193,6 @@ func (instance *CalculatorMenu) Run() {
 
 	instance.parent.CreateOrLoadPersist("Calc_ExchangeRate", 1.0)
 
-	if instance.process_selection {
-		instance.process_selection = false
-
-		// Do nothing if the selection path is empty (i.e. user cancelled the selector)
-		if len(instance.selection_path) > 0 {
-
-			switch instance.selection_path[0] {
-			case "Equals":
-				res, err := instance.evaluate()
-				if err != nil {
-					instance.calc_displayed = "Error"
-					instance.calc_input = []rune{}
-				} else {
-					s := strconv.FormatFloat(res, 'f', -1, 64)
-					instance.calc_input = []rune(s)
-					instance.compute_displayed()
-				}
-
-			case "Clear":
-				instance.calc_input = []rune{}
-				instance.calc_displayed = ""
-
-			case "Exchange rate":
-				// Check if the user selected a suboption
-				if len(instance.selection_path) > 1 {
-					val, err := instance.evaluate()
-					if err == nil && val != 0 {
-						switch instance.selection_path[1] {
-						case "Foreign as domestic":
-							instance.parent.RenderAlert("ok", []string{"Rate", "saved"})
-							instance.parent.Set("Calc_ExchangeRate", val)
-							go instance.parent.SyncPersistent()
-							go instance.parent.PlayKey()
-							time.Sleep(time.Second)
-
-						case "Domestic as foreign":
-							instance.parent.RenderAlert("ok", []string{"Rate", "saved"})
-							instance.parent.Set("Calc_ExchangeRate", 1.0/val)
-							go instance.parent.SyncPersistent()
-							go instance.parent.PlayKey()
-							time.Sleep(time.Second)
-						}
-					}
-				}
-
-			case "To domestic":
-				val, err := instance.evaluate()
-				rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
-				if ok && err == nil {
-					res := val * rate
-					s := strconv.FormatFloat(res, 'f', -1, 64)
-					instance.calc_input = []rune(s)
-					instance.compute_displayed()
-				}
-
-			case "To foreign":
-				val, err := instance.evaluate()
-				rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
-				if ok && err == nil && rate != 0 {
-					res := val / rate
-					s := strconv.FormatFloat(res, 'f', -1, 64)
-					instance.calc_input = []rune(s)
-					instance.compute_displayed()
-				}
-			}
-
-		}
-	}
-
 	instance.render()
 
 	var operators = []rune{'+', '-', '*', '/'}
@@ -296,7 +211,7 @@ func (instance *CalculatorMenu) Run() {
 			if evt.State {
 
 				instance.parent.Timers["keypad"].Reset()
-				instance.parent.Timers["oled"].Reset()
+				instance.parent.Timers["screensaver"].Reset()
 				instance.parent.Display.On()
 				misc.KeyLightsOn()
 				go instance.parent.PlayKey()
@@ -360,9 +275,11 @@ func (instance *CalculatorMenu) Run() {
 					}
 
 				case 'S':
-					go instance.parent.PushWithArgs("selector", &SelectorArgs{
+					selection := instance.parent.ShowSelector(SelectorArgs{
 						Title:          "Calculator",
 						SelectionClass: "calculator.main",
+						ShowTitle:      true,
+						SelectorType:   SELECTOR_MULTI_3,
 						Options: [][]string{
 							{"Equals"},
 							{"Clear"},
@@ -373,12 +290,75 @@ func (instance *CalculatorMenu) Run() {
 							{"To domestic"},
 							{"To foreign"},
 						},
-						ButtonLabel:           "Select",
-						VisibleRows:           3,
-						ShowPathInTitle:       true,
-						ShowElemNumberInTitle: true,
-					})
-					return
+						ButtonLabel:     "Select",
+						ShowPathInTitle: true,
+					}, instance.ctx)
+
+					if selection != nil && len(selection.SelectionPath) > 0 {
+						switch selection.SelectionPath[0] {
+						case "Equals":
+							res, err := instance.evaluate()
+							if err != nil {
+								instance.calc_displayed = "Error"
+								instance.calc_input = []rune{}
+							} else {
+								s := strconv.FormatFloat(res, 'f', -1, 64)
+								instance.calc_input = []rune(s)
+								instance.compute_displayed()
+							}
+
+						case "Clear":
+							instance.calc_input = []rune{}
+							instance.calc_displayed = ""
+
+						case "Exchange rate":
+							// Check if the user selected a suboption
+							if len(selection.SelectionPath) > 1 {
+								val, err := instance.evaluate()
+								if err == nil && val != 0 {
+									animCtx, animCancel := context.WithCancel(instance.ctx)
+									switch selection.SelectionPath[1] {
+									case "Foreign as domestic":
+										go instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Rate", "saved"})
+										instance.parent.Set("Calc_ExchangeRate", val)
+										go instance.parent.SyncPersistent()
+										go instance.parent.PlayKey()
+
+									case "Domestic as foreign":
+										go instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Rate", "saved"})
+										instance.parent.Set("Calc_ExchangeRate", 1.0/val)
+										go instance.parent.SyncPersistent()
+										go instance.parent.PlayKey()
+									}
+									time.Sleep(2 * time.Second)
+									animCancel()
+								}
+							}
+
+						case "To domestic":
+							val, err := instance.evaluate()
+							rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
+							if ok && err == nil {
+								res := val * rate
+								s := strconv.FormatFloat(res, 'f', -1, 64)
+								instance.calc_input = []rune(s)
+								instance.compute_displayed()
+							}
+
+						case "To foreign":
+							val, err := instance.evaluate()
+							rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
+							if ok && err == nil && rate != 0 {
+								res := val / rate
+								s := strconv.FormatFloat(res, 'f', -1, 64)
+								instance.calc_input = []rune(s)
+								instance.compute_displayed()
+							}
+						}
+					}
+
+					instance.render()
+					continue
 
 				case 'U':
 				case 'D':
@@ -416,6 +396,4 @@ func (instance *CalculatorMenu) Stop() {
 func (instance *CalculatorMenu) cleanup() {
 	instance.calc_input = []rune{}
 	instance.calc_displayed = ""
-	instance.selection_path = []string{}
-	instance.process_selection = false
 }

@@ -2,22 +2,22 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"image"
+	"lcd"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"db"
 	"keypad"
 	"menu"
 	"misc"
-	"phone"
-	"sh1107"
+	"modem"
+
+	"github.com/stianeikeland/go-rpio/v4"
+	"golang.org/x/sys/unix"
+
 	"timers"
 	"tones"
 
@@ -29,105 +29,36 @@ import (
 
 // go build -ldflags "-X 'main.DEBUG_MODE=false'" .
 var DEBUG_MODE string = "true"
-var FW_VERSION string = "0.1.18 (2.17.2026)"
+var FW_VERSION string = "0.1.19 (2.28.2026)"
 var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
-var SPRITE_LIST = []string{
 
-	// Bluetooth sprites
-	"bluetooth/idle",
-	"bluetooth/active",
-
-	// Battery status sprites
-	"battery/0",
-	"battery/0_warn",
-	"battery/1",
-	"battery/2",
-	"battery/3",
-	"battery/4",
-	"battery/5",
-	"battery/6",
-	"battery/7",
-	"battery/8",
-	"battery/9",
-	"battery/10",
-	"battery/unknown",
-
-	// Cellular network sprites
-	"cell/0",
-	"cell/1",
-	"cell/2",
-	"cell/3",
-	"cell/4",
-	"cell/5",
-	"cell/6",
-	"cell/7",
-	"cell/data_active",
-	"cell/data_inactive",
-	"cell/fault",
-	"cell/locked",
-	"cell/off",
-	"cell/prohibit",
-	"cell/sos",
-	"cell/airplane",
-	"cell/no_sim",
-
-	// WiFi status sprites
-	"wifi/0",
-	"wifi/1",
-	"wifi/2",
-	"wifi/3",
-	"wifi/4",
-	"wifi/5",
-	"wifi/6",
-	"wifi/7",
-	"wifi/connecting",
-	"wifi/networks_found",
-	"wifi/no_networks",
-	"wifi/no_internet",
-
-	// Home screen menu sprites
-	"home/Calculator",
-	"home/CallDivert",
-	"home/CallRegister",
-	"home/Clock",
-	"home/Apps",
-	"home/Messages",
-	"home/PhoneBook",
-	"home/Settings",
-	"home/Tones",
-
-	// Text entry
-	"uppercase",
-	"lowercase",
-	"numbers",
-
-	// Misc sprites
-	"alert",
-	"ok",
-	"info",
-	"loading",
-	"prohibited",
-	"low_battery",
-	"very_low_battery",
-	"dead_battery",
-	"battery_charging",
-	"battery_charged",
-	"duck",
-	"logo",
-}
+const (
+	EXIT_SHUTDOWN = 1
+	EXIT_REBOOT   = 2
+	EXIT_RESTART  = 3
+)
 
 func exit() {
+	if DEBUG_MODE == "true" {
+		misc.EnablePowerbutton()
+	}
+
+	if r := recover(); r != nil {
+		panic(r)
+	}
+
 	// DO NOT TOUCH
 	if DEBUG_MODE == "true" {
 		log.Println("👋 Goodbye")
 		os.Exit(0)
 	} else {
+		time.Sleep(500 * time.Millisecond)
 		switch EXIT_MODE {
-		case 1:
+		case EXIT_SHUTDOWN:
 			misc.Shutdown()
-		case 2:
+		case EXIT_REBOOT:
 			misc.HardReboot()
-		case 3:
+		case EXIT_RESTART:
 			misc.SoftReboot()
 		}
 	}
@@ -138,6 +69,9 @@ func main() {
 	// Handle system exit
 	defer exit()
 	debug := (DEBUG_MODE == "true")
+	if debug {
+		misc.DisablePowerbutton()
+	}
 
 	// Setup crash logging in deploy mode
 	if !debug {
@@ -164,12 +98,14 @@ func main() {
 	/* Create new instance of gonetworkmanager */
 	nm, err := gonetworkmanager.NewNetworkManager()
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return
 	}
 
 	devices, err := nm.GetDevices()
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return
 	}
 
 	var wifi_device_raw dbus.ObjectPath
@@ -195,36 +131,43 @@ func main() {
 		panic(err)
 	}
 
+	// Failsafe
+	enabled, _ := nm.GetPropertyWirelessEnabled()
+	if !enabled {
+		nm.SetPropertyWirelessEnabled(true)
+	}
+
 	// Init db
 	database, err := gorm.Open(sqlite.Open("/root/rakian/kvstore.db"), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
 	database.AutoMigrate(&db.KVStore{})
+	database.AutoMigrate(&db.Contacts{})
+	database.AutoMigrate(&db.Messages{})
+	database.AutoMigrate(&db.CallSessionEvents{})
+	database.AutoMigrate(&db.CallStateEvents{})
+
+	// Initialize rpio
+	if err := rpio.Open(); err != nil {
+		log.Fatalf("⚠️ Failed to initialize rpio: %v", err)
+	}
+	defer rpio.Close()
+
+	// Define the control pins (DC, RST)
+	dc := rpio.Pin(9)
+	rst := rpio.Pin(7)
 
 	// Initialize the display
-	display := sh1107.New(0x3c, 0, sh1107.UpsideDown, 128, 128)
-	defer display.Close()
+	display := lcd.New(dc, rst)
+	defer rpio.SpiEnd(rpio.Spi0)
 
-	if _, capacity, _, read_err := misc.GetBatteryStatus(); read_err == nil && capacity <= 1 {
-		alert, err := sh1107.LoadSprite("sprites/battery_needs_charge.bmp")
-		if err != nil {
-			log.Fatalf("⚠️ Failed to load alert image: %v", err)
-		}
-		display.SetBrightness(100)
-		display.Clear(sh1107.Black)
-		display.DrawImageAligned(alert, 64, 74, sh1107.AlignCenter, sh1107.AlignCenter)
+	lcd_powerdown := func() {
+		display.Clear(lcd.White)
 		display.Render()
-		display.On()
-		time.Sleep(5 * time.Second)
-		EXIT_MODE = 1
-		return
-	} else if read_err != nil {
-		// TODO: show diagnostic code
-		log.Println(read_err)
-		EXIT_MODE = 1
-		return
+		display.Off()
 	}
+	defer lcd_powerdown()
 
 	// Create a global context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -242,44 +185,60 @@ func main() {
 
 	// Initialize components
 	player := tones.New()
-	keypadEvents := keypad.Run(ctx, debug)
-	modem := phone.Run(debug)
+	phone := modem.Run(debug, database)
+	rawKeypadEvents := keypad.Run(ctx, debug)
+
+	// Initialize keypad and wrap events to detect long-press on power button
+	keypadEvents := make(chan *keypad.KeypadEvent, 10)
+	go func() {
+		var powerTimer *time.Timer
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case evt, ok := <-rawKeypadEvents:
+				if !ok {
+					return
+				}
+				if evt.Key == 'P' {
+					if evt.State {
+						powerTimer = time.AfterFunc(5*time.Second, func() {
+							global_quit(EXIT_SHUTDOWN)
+						})
+					} else if powerTimer != nil {
+						powerTimer.Stop()
+					}
+				}
+				select {
+				case keypadEvents <- evt:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
 
 	// Boot logo
-	logo, err := sh1107.LoadSprite("sprites/logo.bmp")
+	logo, err := lcd.LoadSprite("sprites/logo.bmp")
 	if err != nil {
 		log.Fatalf("⚠️ Failed to load logo: %v", err)
 	}
-	display.SetBrightness(100)
 
-	draw_logo := func() {
-		display.Clear(sh1107.Black)
-		display.DrawImage(logo, 20, 63)
-		display.Render()
-	}
-
-	draw_logo()
 	display.On()
 	misc.KeyLightsOn()
 
 	// Load sprites
-	sprites := make(map[string]image.Image, len(SPRITE_LIST))
-	for _, key := range SPRITE_LIST {
+	display.Load_Sprites()
 
-		loaded, err := sh1107.LoadSprite(fmt.Sprintf("sprites/%s.bmp", key))
-		if err != nil {
-			log.Fatalf("⚠️ Failed to load sprite %s: %v", key, err)
-		}
-		sprites[key] = loaded
-	}
+	// Load animations
+	display.LoadAnimations()
 
 	// Initialize menu system
 	menus := menu.Init(
 		ctx,
 		(debug),
 		display,
-		sprites,
-		modem,
+		phone,
 		player,
 		global_quit,
 		keypadEvents,
@@ -287,6 +246,28 @@ func main() {
 		nm,
 		wifi_device,
 	)
+
+	// Setup global required keys
+	menus.CreateOrLoadPersist("CanVibrate", true)
+	menus.CreateOrLoadPersist("CanRing", true)
+	menus.CreateOrLoadPersist("BeepOnly", false)
+	menus.CreateOrLoadPersist("APN", "vzwinternet")
+
+	// Play boot chime
+	if menus.Get("CanRing").(bool) && !menus.Get("BeepOnly").(bool) {
+		log.Println("🎵 Playing boot chime...")
+		go misc.PlayBoot(player, ctx)
+	}
+
+	// Play boot animation
+	display.PlayAnimation(ctx, "boot", 0, 0, lcd.AlignNone, lcd.AlignNone)
+	time.Sleep(1 * time.Second)
+
+	// Load fonts
+	display.Load_Font_Tiny()
+	display.Load_Font_Small_Bold()
+	display.Load_Font_Small_Plain()
+	display.Load_Font_Large_Bold()
 
 	// Register menus
 	menus.Register("power", menus.NewPowerMenu())
@@ -303,58 +284,20 @@ func main() {
 	menus.Register("battery_charging", menus.NewBatteryChargingAlert())
 	menus.Register("battery_charged", menus.NewBatteryChargedAlert())
 	menus.Register("calculator", menus.NewCalculatorMenu())
-	menus.Register("selector", menus.NewSelector())
 	menus.Register("settings", menus.NewSettingsMenu())
 	menus.Register("phonebook", menus.NewPhonebookMenu())
+	menus.Register("keypad_unlock", menus.NewKeypadUnlockMenu())
 
-	// Setup global required keys
+	// Set runtime keys
 	menus.Set("DebugMode", (debug))
 	menus.Set("FirmwareVersion", FW_VERSION)
-	menus.CreateOrLoadPersist("CanVibrate", false)
-	menus.CreateOrLoadPersist("CanRing", false)
-	menus.CreateOrLoadPersist("BeepOnly", false)
-	menus.Set("InitialKey", ' ')
 	menus.Set("BatteryOK", true)
 	menus.Set("BatteryVoltage", "")
 	menus.Set("BatteryPercent", 0)
 	menus.Set("BatteryScaledPercent", 0)
 	menus.Set("BatteryCharging", false)
 	menus.Set("BluetoothEnabled", false)
-
-	// Load fonts
-	display.Load_Font_Time()
-	display.Load_Font8_Bold()
-	display.Load_Font8_Normal()
-	display.Load_Font16()
-
-	// Play boot chime
-	if DEBUG_MODE != "true" {
-		if menus.Get("CanRing").(bool) && !menus.Get("BeepOnly").(bool) {
-			go misc.PlayBoot(player, ctx)
-		}
-		time.Sleep(2 * time.Second)
-	}
-
-	// Show version info
-	if debug {
-		display.DrawTextAligned(64, 20, display.Use_Font8_Bold(), "DEBUG MODE", false, sh1107.AlignCenter, sh1107.AlignCenter)
-	}
-	display.DrawTextAligned(64, 82, display.Use_Font8_Normal(), "v"+FW_VERSION, false, sh1107.AlignCenter, sh1107.AlignCenter)
-	display.Render()
-
-	if DEBUG_MODE != "true" {
-		time.Sleep(2 * time.Second)
-	}
-
-	// Failsafe
-	enabled, _ := nm.GetPropertyWirelessEnabled()
-	if !enabled {
-		log.Println("WiFi was off, emergency re-enabling...")
-		nm.SetPropertyWirelessEnabled(true)
-		menus.RenderAlert("ok", []string{"WiFi", "failsafe", "triggered!"})
-		go menus.PlayAlert()
-		time.Sleep(5 * time.Second) // Give it a moment to breathe
-	}
+	menus.Set("KeypadLocked", false)
 
 	// Set initial WiFi status values
 	connected, ssid, strength, ipaddr := misc.GetWiFiStatus()
@@ -369,7 +312,7 @@ func main() {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(1 * time.Second):
 				connected, ssid, strength, ipaddr = misc.GetWiFiStatus()
 				menus.Set("WiFi_Connected", connected)
 				menus.Set("WiFi_SSID", ssid)
@@ -389,46 +332,25 @@ func main() {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(1 * time.Second):
 				menus.Set("BluetoothEnabled", misc.IsBluetoothEnabled())
 			}
 		}
 	}()
 
 	// Handle modem events
-	if modem != nil {
+	if phone.OK {
 		go func() {
 			for {
 				select {
 				case <-ctx.Done():
 					return
 
-				case <-modem.RingingChan:
-					go menus.ToMenu("ring")
+				case call := <-phone.RingingChan:
+					go menus.ToMenuWithArgs("ring", call)
 					misc.KeyLightsOn()
-					menus.Timers["keypad"].Stop()
-					menus.Timers["oled"].Stop()
-
-				case <-modem.CallStartChan:
-					go menus.ToMenu("phone")
-					menus.Timers["oled"].Restart()
 					menus.Timers["keypad"].Restart()
-
-				case <-modem.CallErrorChan:
-					log.Println("⚠️ Call failed")
-					go menus.RenderAlert("alert", []string{"Call", "failed."})
-					menus.Timers["oled"].Restart()
-					menus.Timers["keypad"].Restart()
-					misc.KeyLightsOn()
-					menus.PlayAlert()
-					time.Sleep(2 * time.Second)
-					modem.CallHandledChan <- true
-
-				case <-modem.CallEndChan:
-					go menus.ToStart()
-					misc.KeyLightsOn()
-					menus.Timers["oled"].Restart()
-					menus.Timers["keypad"].Restart()
+					menus.Timers["screensaver"].Restart()
 				}
 			}
 		}()
@@ -436,19 +358,19 @@ func main() {
 
 	// Monitor Battery & Charging
 	go func() {
+		var lastChargingState bool
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(500 * time.Millisecond):
+			case <-time.After(1 * time.Second):
 				voltage, capacity, capacity_scaled, read_err := misc.GetBatteryStatus()
 
 				if read_err != nil {
 					menus.Set("BatteryOK", false)
-					return
+					continue
 				}
 
-				last_state := menus.Get("BatteryCharging").(bool)
 				charging := misc.GetChargingStatus()
 
 				menus.Set("BatteryOK", true)
@@ -458,23 +380,31 @@ func main() {
 
 				now := time.Now()
 
-				if !last_state && charging {
-					if !chargingBattShown {
-						chargingBattShown = true
-						log.Println("🪫 CHARGING")
-						menus.Set("BatteryCharging", true)
-						BatteryChargingChan <- true
+				if charging && !lastChargingState {
+					lastChargingState = true
+					if capacity != 100 {
+						if !chargingBattShown {
+							chargingBattShown = true
+							log.Println("🪫 CHARGING")
+							menus.Set("BatteryCharging", true)
+							BatteryChargingChan <- true
+						}
 					}
-
-				} else if last_state && !charging {
-					log.Println("🪫 UNPLUGGED")
+				} else if !charging && lastChargingState {
+					lastChargingState = false
+					log.Println("🪫 DISCHARGING")
 					menus.Set("BatteryCharging", false)
-					if chargingBattShown {
-						chargingBattShown = false
-					}
 					if fullBattShown {
 						fullBattShown = false
 					}
+					if chargingBattShown {
+						chargingBattShown = false
+					}
+
+					// Reset lastLowBattTime and lastVeryLowBattTime
+					now := time.Now()
+					lastLowBattTime = now.Add(-10 * time.Minute)
+					lastVeryLowBattTime = now.Add(-10 * time.Minute)
 				}
 
 				if capacity == 100 {
@@ -484,7 +414,18 @@ func main() {
 						menus.Set("BatteryCharging", false)
 						BatteryChargedChan <- true
 					}
-				} else if capacity <= 1 {
+					continue
+				}
+
+				if charging {
+					if !chargingBattShown {
+						chargingBattShown = true
+						menus.Set("BatteryCharging", true)
+					}
+					continue
+				}
+
+				if capacity <= 1 {
 					log.Print("🪫 BATTERY EMPTY")
 					DeadBattChan <- true
 					return
@@ -506,25 +447,26 @@ func main() {
 		}
 	}()
 
-	// Show alert if there's something wrong with the SIM state
-	if modem != nil && !modem.SimCardInserted {
-		menus.RenderAlert("prohibited", []string{"No SIM", "card", "inserted."})
-		if menus.Get("CanRing").(bool) || menus.Get("BeepOnly").(bool) {
-			go menus.PlayAlert()
-		}
-		time.Sleep(3 * time.Second)
-	}
+	/*
+		// Show alert if there's something wrong with the SIM state
+		if modem != nil && !modem.SimCardInserted {
+			// menus.RenderAlert("prohibited", []string{"No SIM", "card", "inserted."})
+			if menus.Get("CanRing").(bool) || menus.Get("BeepOnly").(bool) {
+				// go menus.PlayAlert()
+			}
+			time.Sleep(3 * time.Second)
+		} */
 
 	// Persist screen for a moment
 	time.Sleep(time.Second)
-	display.Clear(sh1107.Black)
+	display.Clear(lcd.White)
 	display.Render()
 
 	// Configure timers
-	menus.Timers["oled"] = timers.New(ctx, 10*time.Second, false, func() {
+	menus.Timers["screensaver"] = timers.New(ctx, 30*time.Second, false, func() {
 		menus.Push("screensaver")
 	})
-	menus.Timers["keypad"] = timers.New(ctx, 5*time.Second, false, func() {
+	menus.Timers["keypad"] = timers.New(ctx, 10*time.Second, false, func() {
 		misc.KeyLightsOff()
 	})
 
@@ -542,30 +484,30 @@ func main() {
 				go menus.ToMenu("battery_charged")
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
-				menus.Timers["oled"].Restart()
+				menus.Timers["screensaver"].Restart()
 
 			case <-BatteryChargingChan:
 				go menus.ToMenu("battery_charging")
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
-				menus.Timers["oled"].Restart()
+				menus.Timers["screensaver"].Restart()
 
 			case <-VeryLowBattChan:
 				go menus.ToMenu("very_low_battery")
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
-				menus.Timers["oled"].Restart()
+				menus.Timers["screensaver"].Restart()
 
 			case <-LowBattChan:
 				go menus.ToMenu("low_battery")
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
-				menus.Timers["oled"].Restart()
+				menus.Timers["screensaver"].Restart()
 
 			case <-DeadBattChan:
 				misc.KeyLightsOn()
 				menus.Timers["keypad"].Stop()
-				menus.Timers["oled"].Stop()
+				menus.Timers["screensaver"].Stop()
 				go menus.ToMenu("dead_battery")
 			}
 		}
@@ -583,11 +525,10 @@ func main() {
 
 	// Wait for all contexts to close
 	menus.Shutdown()
-	if modem != nil {
-		modem.Hangup()
+	if phone != nil {
+		phone.HangupAll()
 	}
-	display.SetBrightness(0.0)
-	display.Clear(sh1107.Black)
+	display.Clear(lcd.White)
 	display.DrawImage(logo, 20, 70)
 	display.Render()
 	display.On()

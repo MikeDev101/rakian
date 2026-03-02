@@ -3,7 +3,6 @@ package misc
 import (
 	"context"
 	"fmt"
-	"image"
 	"log"
 	"math"
 	"net/http"
@@ -14,13 +13,30 @@ import (
 	"strings"
 	"time"
 
-	"sh1107"
 	"tones"
 
-	"periph.io/x/conn/v3/gpio"
-	"periph.io/x/conn/v3/gpio/gpioreg"
-	"periph.io/x/host/v3"
+	"github.com/stianeikeland/go-rpio/v4"
 )
+
+func EnablePowerbutton() {
+	cmd := exec.Command("enable_poweroff")
+	err := cmd.Run()
+	if err != nil {
+		log.Println("Failed to enable the powerbutton:", err)
+	} else {
+		log.Println("Hardware power button enabled.")
+	}
+}
+
+func DisablePowerbutton() {
+	cmd := exec.Command("disable_poweroff")
+	err := cmd.Run()
+	if err != nil {
+		log.Println("Failed to disable the powerbutton:", err)
+	} else {
+		log.Println("Hardware power button disabled.")
+	}
+}
 
 func Shutdown() {
 	cmd := exec.Command("poweroff")
@@ -30,6 +46,7 @@ func Shutdown() {
 	} else {
 		log.Println("Shutdown command issued.")
 	}
+	os.Exit(0)
 }
 
 func HardReboot() {
@@ -40,6 +57,7 @@ func HardReboot() {
 	} else {
 		log.Println("Hard reboot command issued.")
 	}
+	os.Exit(0)
 }
 
 func SoftReboot() {
@@ -50,34 +68,25 @@ func SoftReboot() {
 	} else {
 		log.Println("Soft reboot command issued.")
 	}
+	os.Exit(0)
 }
 
 func KeyLightsOn() {
-	if _, err := host.Init(); err != nil {
+	if err := rpio.Open(); err != nil {
 		panic(err)
 	}
-	p := gpioreg.ByName("GPIO23")
-	if p == nil {
-		log.Fatal("Failed to find GPIO23 (Keypad light control)")
-	}
-
-	if err := p.Out(gpio.High); err != nil {
-		log.Fatal(err)
-	}
+	p := rpio.Pin(13)
+	p.Output()
+	p.High()
 }
 
 func KeyLightsOff() {
-	if _, err := host.Init(); err != nil {
+	if err := rpio.Open(); err != nil {
 		panic(err)
 	}
-	p := gpioreg.ByName("GPIO23")
-	if p == nil {
-		log.Fatal("Failed to find GPIO23 (Keypad light control)")
-	}
-
-	if err := p.Out(gpio.Low); err != nil {
-		log.Fatal(err)
-	}
+	p := rpio.Pin(13)
+	p.Output()
+	p.Low()
 }
 
 func SleepWithContext(duration time.Duration, ctx context.Context) {
@@ -118,64 +127,23 @@ func PlayDeadBattery(player *tones.Tones, ctx context.Context) {
 
 func PlayRingtone(player *tones.Tones, ctx context.Context) {
 	notes := []tones.Note{
-		{Key: 88, Duration: 150 * time.Millisecond, Divider: 10}, // E7
-		{Key: 86, Duration: 150 * time.Millisecond, Divider: 10}, // D#7 / Eb7
-		{Key: 78, Duration: 300 * time.Millisecond, Divider: 10}, // G#6 / Ab6
-		{Key: 80, Duration: 300 * time.Millisecond, Divider: 10}, // A#6 / Bb6
-		{Key: 85, Duration: 150 * time.Millisecond, Divider: 10}, // D7
-		{Key: 83, Duration: 150 * time.Millisecond, Divider: 10}, // C#7 / Db7
-		{Key: 74, Duration: 300 * time.Millisecond, Divider: 10}, // D6
-		{Key: 76, Duration: 300 * time.Millisecond, Divider: 10}, // E6
-		{Key: 83, Duration: 150 * time.Millisecond, Divider: 10}, // C#7 / Db7
-		{Key: 81, Duration: 150 * time.Millisecond, Divider: 10}, // B6
-		{Key: 73, Duration: 300 * time.Millisecond, Divider: 10}, // C#6 / Db6
-		{Key: 76, Duration: 300 * time.Millisecond, Divider: 10}, // E6
-		{Key: 81, Duration: 600 * time.Millisecond, Divider: 10}, // B6
-		{Key: 0, Duration: 3 * time.Second, Divider: 1},          // NONE
-		{Key: 88, Duration: 150 * time.Millisecond, Divider: 2},  // E7
-		{Key: 86, Duration: 150 * time.Millisecond, Divider: 2},  // D#7 / Eb7
-		{Key: 78, Duration: 300 * time.Millisecond, Divider: 2},  // G#6 / Ab6
-		{Key: 80, Duration: 300 * time.Millisecond, Divider: 2},  // A#6 / Bb6
-		{Key: 85, Duration: 150 * time.Millisecond, Divider: 2},  // D7
-		{Key: 83, Duration: 150 * time.Millisecond, Divider: 2},  // C#7 / Db7
-		{Key: 74, Duration: 300 * time.Millisecond, Divider: 2},  // D6
-		{Key: 76, Duration: 300 * time.Millisecond, Divider: 2},  // E6
-		{Key: 83, Duration: 150 * time.Millisecond, Divider: 2},  // C#7 / Db7
-		{Key: 81, Duration: 150 * time.Millisecond, Divider: 2},  // B6
-		{Key: 73, Duration: 300 * time.Millisecond, Divider: 2},  // C#6 / Db6
-		{Key: 76, Duration: 300 * time.Millisecond, Divider: 2},  // E6
-		{Key: 81, Duration: 600 * time.Millisecond, Divider: 2},  // B6
-		{Key: 0, Duration: 3 * time.Second, Divider: 1},          // NONE
+		{Key: 88, Duration: 150 * time.Millisecond, Divider: 1}, // E7
+		{Key: 86, Duration: 150 * time.Millisecond, Divider: 1}, // D#7 / Eb7
+		{Key: 78, Duration: 300 * time.Millisecond, Divider: 1}, // G#6 / Ab6
+		{Key: 80, Duration: 300 * time.Millisecond, Divider: 1}, // A#6 / Bb6
+		{Key: 85, Duration: 150 * time.Millisecond, Divider: 1}, // D7
+		{Key: 83, Duration: 150 * time.Millisecond, Divider: 1}, // C#7 / Db7
+		{Key: 74, Duration: 300 * time.Millisecond, Divider: 1}, // D6
+		{Key: 76, Duration: 300 * time.Millisecond, Divider: 1}, // E6
+		{Key: 83, Duration: 150 * time.Millisecond, Divider: 1}, // C#7 / Db7
+		{Key: 81, Duration: 150 * time.Millisecond, Divider: 1}, // B6
+		{Key: 73, Duration: 300 * time.Millisecond, Divider: 1}, // C#6 / Db6
+		{Key: 76, Duration: 300 * time.Millisecond, Divider: 1}, // E6
+		{Key: 81, Duration: 600 * time.Millisecond, Divider: 1}, // B6
+		{Key: 0, Duration: 3 * time.Second, Divider: 1},         // NONE
 	}
 
 	player.Play(ctx, notes)
-}
-
-func VibrateAlert(player *tones.Tones, ctx context.Context) {
-	states := []tones.Vibrate{
-		{State: true, Duration: 300 * time.Millisecond},
-		{State: false, Duration: 100 * time.Millisecond},
-		{State: true, Duration: 300 * time.Millisecond},
-		{State: false, Duration: 100 * time.Millisecond},
-	}
-	player.Vibrate(ctx, states)
-}
-
-func StartVibrate(player *tones.Tones, ctx context.Context) {
-	var states []tones.Vibrate
-	for range 3 {
-		for _, elem := range []tones.Vibrate{
-			{State: true, Duration: 200 * time.Millisecond},
-			{State: false, Duration: 200 * time.Millisecond},
-			{State: true, Duration: 200 * time.Millisecond},
-			{State: false, Duration: 200 * time.Millisecond},
-			{State: true, Duration: 500 * time.Millisecond},
-			{State: false, Duration: 500 * time.Millisecond},
-		} {
-			states = append(states, elem)
-		}
-	}
-	player.Vibrate(ctx, states)
 }
 
 func PlayBeep(player *tones.Tones, ctx context.Context) {
@@ -189,13 +157,13 @@ func PlayBeep(player *tones.Tones, ctx context.Context) {
 }
 
 func PlayBoot(player *tones.Tones, ctx context.Context) {
-	offset := 9
+	offset := 9.0
 	notes := []tones.Note{
-		{Key: 83 + offset, Duration: 300 * time.Millisecond, Divider: 10},  // C#7 / Db7
-		{Key: 81 + offset, Duration: 300 * time.Millisecond, Divider: 10},  // B6
-		{Key: 73 + offset, Duration: 600 * time.Millisecond, Divider: 10},  // C#6 / Db6
-		{Key: 76 + offset, Duration: 600 * time.Millisecond, Divider: 10},  // E6
-		{Key: 81 + offset, Duration: 1200 * time.Millisecond, Divider: 10}, // B6
+		{Key: 83 + offset, Duration: 300 * time.Millisecond, Divider: 1}, // C#7 / Db7
+		{Key: 81 + offset, Duration: 300 * time.Millisecond, Divider: 1}, // B6
+		{Key: 73 + offset, Duration: 500 * time.Millisecond, Divider: 1}, // C#6 / Db6
+		{Key: 76 + offset, Duration: 500 * time.Millisecond, Divider: 1}, // E6
+		{Key: 81 + offset, Duration: 750 * time.Millisecond, Divider: 1}, // B6
 	}
 
 	player.Play(ctx, notes)
@@ -241,7 +209,9 @@ func GetBatteryStatus() (voltage float64, capacity int, capacity_scaled int, err
 
 	// Scale values
 	voltage = float64(voltageRaw) / 1000000.0
-	capacity_scaled = int(math.Round(float64(capacity) / 10.0))
+
+	// Scale to 0–4
+	capacity_scaled = int(math.Round((float64(capacity) / 100.0) * 4.0))
 
 	return voltage, capacity, capacity_scaled, nil
 }
@@ -252,6 +222,41 @@ func GetOSVersion() string {
 		panic(fmt.Errorf("os-release failed: %w", err))
 	}
 	return strings.ReplaceAll(strings.TrimSpace(string(output)), "\"", "")
+}
+
+func CheckCellularData(apn string) bool {
+	cmd := exec.Command("/usr/bin/cellular_toggle", "status", apn)
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Error checking cellular: %v", err)
+	}
+	enabled := strings.TrimSpace(string(output)) == "1"
+	return enabled
+}
+
+func SetCellularDataState(apn string, state bool) bool {
+	mode := "disable"
+	if state {
+		mode = "enable"
+	}
+
+	cmd := exec.Command("/usr/bin/cellular_toggle", mode, apn)
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Error setting cellular: %v", err)
+	}
+	enabled := strings.TrimSpace(string(output)) == "1"
+	return enabled
+}
+
+func ToggleCellularData(apn string) bool {
+	cmd := exec.Command("/usr/bin/cellular_toggle", "toggle", apn)
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Error toggling cellular: %v", err)
+	}
+	enabled := strings.TrimSpace(string(output)) == "1"
+	return enabled
 }
 
 func GetWiFiStatus() (connected bool, ssid string, signalScaled int, ipaddress string) {
@@ -286,10 +291,10 @@ func GetWiFiStatus() (connected bool, ssid string, signalScaled int, ipaddress s
 			percent = 100
 		}
 
-		// Scale to 0–7
-		signalScaled = percent * 8 / 100
-		if signalScaled > 7 {
-			signalScaled = 7
+		// Scale to 0–5
+		signalScaled = percent * 6 / 100
+		if signalScaled > 5 {
+			signalScaled = 5
 		} else if signalScaled < 0 {
 			signalScaled = 0
 		}
@@ -332,85 +337,6 @@ func GetModemStatusMMCLI() (state string, operator string, signal string) {
 		}
 	}
 	return state, operator, signal
-}
-
-func TestText(display *sh1107.SH1107) {
-	log.Print("Testing lowercase")
-
-	fonts := []struct {
-		name     string
-		set      func() map[rune]image.Image
-		row_next int
-	}{
-		{
-			"8 (Thin)",
-			display.Use_Font8_Normal,
-			12,
-		},
-		{
-			"8 (Bold)",
-			display.Use_Font8_Bold,
-			12,
-		},
-		{
-			"16",
-			display.Use_Font16,
-			18,
-		},
-	}
-
-	for _, font_entry := range fonts {
-
-		font := font_entry.set()
-		tests := [][]string{
-			{
-				"lowercase",
-				"the quick brown",
-				"fox jumps over",
-				"the lazy dog",
-			},
-			{
-				"UPPERCASE",
-				"THE QUICK BROWN",
-				"FOX JUMPS OVER",
-				"THE LAZY DOG",
-			},
-			{
-				"MixedCase",
-				"The Quick Brown",
-				"Fox Jumps Over",
-				"The Lazy Dog",
-			},
-			{
-				"Symbols",
-				"1234567890",
-				"~`!@#$%^&*()€",
-				"_+-=[]|\\:;'",
-				"\"<>,./?£¤¥§",
-			},
-		}
-
-		// Test all cases
-		for _, test_entry := range tests {
-
-			log.Printf("Testing %s using font %s", test_entry[0], font_entry.name)
-
-			display.Clear(sh1107.Black)
-			for i := range len(test_entry) - 1 {
-				display.DrawText(0, 20+(font_entry.row_next*(i+1)), font, test_entry[i+1], false)
-			}
-			display.Render()
-			time.Sleep(3 * time.Second)
-		}
-	}
-
-	log.Println("Testing time font")
-	font := display.Use_Font_Time()
-	display.Clear(sh1107.Black)
-	display.DrawText(0, 20, font, "1234567890", false)
-	display.DrawText(0, 32, font, "/.-", false)
-	display.Render()
-	time.Sleep(3 * time.Second)
 }
 
 // CheckConnectivity attempts to GET a lightweight URL.

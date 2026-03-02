@@ -3,11 +3,12 @@ package menu
 import (
 	"context"
 	"log"
+	"modem"
 	"sync"
 	"time"
 
+	"lcd"
 	"misc"
-	"sh1107"
 	"timers"
 )
 
@@ -20,6 +21,7 @@ type RingMenu struct {
 	batt_flash  bool
 	data_flash  bool
 	render_loop *timers.ResettableTimer
+	call        *modem.Call
 }
 
 func (m *Menu) NewRingMenu() *RingMenu {
@@ -29,17 +31,14 @@ func (m *Menu) NewRingMenu() *RingMenu {
 }
 
 func (instance *RingMenu) render() {
-	display := instance.parent.Display
-	display.Clear(sh1107.Black)
-	instance.parent.RenderStatusBar(&instance.batt_flash, &instance.data_flash)
+	m := instance.parent
+	display := m.Display
+	display.Clear(lcd.White)
+	m.RenderStateCommon()
 
-	font := display.Use_Font8_Bold()
-	display.DrawTextAligned(64, 105, font, "Answer", false, sh1107.AlignCenter, sh1107.AlignNone)
-	display.DrawTextAligned(0, 65, font, instance.parent.Modem.CallState.Status, false, sh1107.AlignRight, sh1107.AlignNone)
+	display.DrawTextAligned(8, 10, display.Use_Font_Small_Bold(), instance.call.Number, false, lcd.AlignNone, lcd.AlignNone)
 
-	font = display.Use_Font16()
-	display.DrawText(0, 45, font, instance.parent.Modem.CallState.PhoneNumber, false)
-
+	m.RenderFooter("Answer", true)
 	display.Render()
 }
 
@@ -50,79 +49,51 @@ func (instance *RingMenu) Configure() {
 }
 
 func (instance *RingMenu) ConfigureWithArgs(args ...any) {
-	// Unused
+	if len(args) == 0 {
+		panic("(*RingMenu).ConfigureWithArgs() requires a *modem.Call argument")
+	}
+	call, ok := args[0].(*modem.Call)
+	if !ok {
+		panic("(*RingMenu).ConfigureWithArgs() argument must be *modem.Call")
+	}
+	instance.call = call
 	instance.Configure()
 }
 
 func (instance *RingMenu) Run() {
+	m := instance.parent
 	if !instance.configured {
 		panic("Attempted to call (*RingMenu).Run() before (*RingMenu).Configure()!")
 	}
 
-	if instance.parent.Get("CanVibrate").(bool) {
+	if instance.call == nil {
+		panic("Attempted to call (*RingMenu).Run() without a call!")
+	}
+
+	if m.Get("BeepOnly").(bool) {
 		instance.wg.Go(func() {
 			for {
 				select {
 				case <-instance.ctx.Done():
 					return
 				default:
-					misc.StartVibrate(instance.parent.Player, instance.ctx)
+					misc.PlayBeep(m.Player, instance.ctx)
+				}
+			}
+		})
+
+	} else if m.Get("CanRing").(bool) {
+		instance.wg.Go(func() {
+			for {
+				select {
+				case <-instance.ctx.Done():
+					return
+				default:
+					misc.PlayRingtone(m.Player, instance.ctx)
 				}
 			}
 		})
 	}
-
-	if instance.parent.Get("BeepOnly").(bool) {
-		instance.wg.Go(func() {
-			for {
-				select {
-				case <-instance.ctx.Done():
-					return
-				default:
-					misc.PlayBeep(instance.parent.Player, instance.ctx)
-				}
-			}
-		})
-
-	} else if instance.parent.Get("CanRing").(bool) {
-		instance.wg.Go(func() {
-			for {
-				select {
-				case <-instance.ctx.Done():
-					return
-				default:
-					misc.PlayRingtone(instance.parent.Player, instance.ctx)
-				}
-			}
-		})
-	}
-
-	// Battery icon blinker
-	instance.wg.Go(func() {
-		for {
-			select {
-			case <-instance.ctx.Done():
-				return
-
-			case <-time.After(time.Second):
-				instance.batt_flash = !instance.batt_flash
-			}
-		}
-	})
-
-	// Data icon blinker
-	instance.wg.Go(func() {
-		instance.render()
-		for {
-			select {
-			case <-instance.ctx.Done():
-				return
-
-			case <-time.After(500 * time.Millisecond):
-				instance.data_flash = !instance.data_flash
-			}
-		}
-	})
 
 	// Main render loop
 	instance.wg.Go(func() {
@@ -144,25 +115,43 @@ func (instance *RingMenu) Run() {
 			case <-instance.ctx.Done():
 				return
 
-			case evt, ok := <-instance.parent.KeypadEvents:
+			case <-instance.call.Ended:
+				go m.ToStart()
+				return
+
+			case evt, ok := <-m.KeypadEvents:
 				if !ok {
 					return
 				}
 
 				if evt.State {
-					instance.parent.Timers["keypad"].Reset()
-					instance.parent.Timers["oled"].Reset()
-					instance.parent.Display.On()
+					m.Timers["keypad"].Reset()
+					m.Timers["screensaver"].Reset()
+					m.Display.On()
 					misc.KeyLightsOn()
 					switch evt.Key {
 					case 'S':
-						go instance.parent.PlayKey()
-						instance.parent.Modem.Answer()
-						return
+						go m.PlayKey()
+						if m.Phone.OK {
+							res := m.Phone.AnswerCall(instance.call)
+							if res != nil {
+								log.Printf("⚠️ Failed to answer call: %v", res)
+							} else {
+								go m.ToMenuWithArgs("phone", instance.call)
+								return
+							}
+						}
 					case 'C':
-						go instance.parent.PlayKey()
-						instance.parent.Modem.Hangup()
-						return
+						go m.PlayKey()
+						if m.Phone.OK {
+							res := m.Phone.HangupCall(instance.call)
+							if res != nil {
+								log.Printf("⚠️ Failed to hang up call: %v", res)
+							} else {
+								go m.ToStart()
+								return
+							}
+						}
 					}
 				}
 			}

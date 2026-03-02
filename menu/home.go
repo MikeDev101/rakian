@@ -2,13 +2,12 @@ package menu
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
 
+	"lcd"
 	"misc"
-	"sh1107"
 	"timers"
 )
 
@@ -30,55 +29,31 @@ func (m *Menu) NewHomeMenu() *HomeMenu {
 }
 
 func (instance *HomeMenu) render() {
-	display := instance.parent.Display
+	m := instance.parent
+	display := m.Display
 
-	display.Clear(sh1107.Black)
+	display.Clear(lcd.White)
+	m.RenderStateCommon()
 
-	// Render status bar
-	instance.parent.RenderStatusBar(&instance.batt_flash, &instance.data_flash)
+	if m.Phone.OK {
+		if m.Phone.SOS {
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "SOS", false, lcd.AlignCenter, lcd.AlignBelow)
+		} else if m.Phone.FlightMode {
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, lcd.AlignCenter, lcd.AlignBelow)
+		} else {
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Bold(), m.Phone.Carrier, false, lcd.AlignCenter, lcd.AlignBelow)
+		}
 
-	// Read clock
-	now := time.Now().In(time.Local)
-	am_pm := "AM"
-	if now.Hour() >= 12 {
-		am_pm = "PM"
-	}
-	hour := now.Hour() % 12
-	if hour == 0 {
-		hour = 12
-	}
-
-	clock_str := fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm)
-
-	// Trim leading spaces
-	for clock_str[0] == ' ' {
-		clock_str = clock_str[1:]
+		if m.Phone.Roaming {
+			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, lcd.AlignCenter, lcd.AlignBelow)
+		}
 	}
 
-	// Draw clock
-	font := display.Use_Font16()
-	display.DrawTextAligned(64, 55, font, clock_str, false, sh1107.AlignCenter, sh1107.AlignNone)
-
-	// Draw carrier info
-	font = display.Use_Font8_Normal()
-	var carrier_label string
-	if instance.parent.Modem == nil {
-		carrier_label = "No service"
-
-	} else if instance.parent.Modem.FlightMode {
-		carrier_label = "Airplane mode"
-
-	} else if !instance.parent.Modem.SimCardInserted {
-		carrier_label = "Insert SIM card"
-
+	if m.Get("KeypadLocked").(bool) {
+		m.RenderFooter("Unlock", true)
 	} else {
-		carrier_label = instance.parent.Modem.Carrier
+		m.RenderFooter("Menu", true)
 	}
-	display.DrawTextAligned(64, 75, font, carrier_label, false, sh1107.AlignCenter, sh1107.AlignNone)
-
-	// Draw menu hint
-	font = display.Use_Font8_Bold()
-	display.DrawTextAligned(64, 105, font, "Menu", false, sh1107.AlignCenter, sh1107.AlignNone)
 
 	display.Render()
 }
@@ -99,50 +74,30 @@ func (instance *HomeMenu) Run() {
 		panic("Attempted to call (*HomeMenu).Run() before (*HomeMenu).Configure()!")
 	}
 
-	// Battery icon blinker
-	instance.wg.Go(func() {
-		for {
-			select {
-			case <-instance.ctx.Done():
-				return
-
-			case <-time.After(time.Second):
-				instance.batt_flash = !instance.batt_flash
-			}
-		}
-	})
-
-	// Data icon blinker
-	instance.wg.Go(func() {
-		instance.render()
-		for {
-			select {
-			case <-instance.ctx.Done():
-				return
-
-			case <-time.After(500 * time.Millisecond):
-				instance.data_flash = !instance.data_flash
-			}
-		}
-	})
+	instance.render()
 
 	// Main render loop
-	instance.wg.Go(func() {
+	instance.wg.Add(1)
+	go func() {
+		defer instance.wg.Done()
 		for {
 			select {
 			case <-instance.ctx.Done():
 				return
 
 			case <-time.After(100 * time.Millisecond):
-				if instance.parent.Display.IsOn {
-					instance.render()
+				if !instance.parent.Display.IsOn {
+					continue
 				}
+				instance.render()
 			}
 		}
-	})
+	}()
 
 	// Input loop
-	instance.wg.Go(func() {
+	instance.wg.Add(1)
+	go func() {
+		defer instance.wg.Done()
 		for {
 			select {
 			case <-instance.ctx.Done():
@@ -153,37 +108,58 @@ func (instance *HomeMenu) Run() {
 					return
 				}
 
-				if evt.State {
+				keypad_locked := instance.parent.Get("KeypadLocked").(bool)
 
+				if evt.State {
 					instance.parent.Timers["keypad"].Reset()
-					instance.parent.Timers["oled"].Reset()
+					instance.parent.Timers["screensaver"].Reset()
 					instance.parent.Display.On()
 					misc.KeyLightsOn()
-					go instance.parent.PlayKey()
 
 					switch evt.Key {
 
 					case 'P':
-						go instance.parent.Push("power")
-						return
-
+						if !keypad_locked {
+							go instance.parent.PlayKey()
+							go instance.parent.Push("power")
+							return
+						}
 					case 'S':
-						go instance.parent.Push("home_selection")
-						return
+						if keypad_locked {
+							go instance.parent.PlayKey()
+							go instance.parent.ToMenu("keypad_unlock")
+							return
+						}
+
+						if !keypad_locked {
+							go instance.parent.PlayKey()
+							go instance.parent.Push("home_selection")
+							return
+						}
 					case 'U':
-						// TODO: cycle between different home menus
+						if !keypad_locked {
+							go instance.parent.PlayKey()
+							// TODO: cycle between different home menus
+						}
 					case 'D':
-						// TODO: cycle between different home menus
+						if !keypad_locked {
+							go instance.parent.PlayKey()
+							// TODO: cycle between different home menus
+						}
 					case 'C':
+						if !keypad_locked {
+							go instance.parent.PlayKey()
+						}
 					default:
-						instance.parent.Set("InitialKey", evt.Key)
-						go instance.parent.Push("dialer")
-						return
+						if !keypad_locked {
+							go instance.parent.PushWithArgs("dialer", evt.Key)
+							return
+						}
 					}
 				}
 			}
 		}
-	})
+	}()
 }
 
 func (instance *HomeMenu) Pause() {

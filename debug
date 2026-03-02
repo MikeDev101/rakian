@@ -6,7 +6,7 @@ REMOTE_PATH="/root/rakian/rakian_debugger"
 
 # 1. ALWAYS Compile first so the local binary is up-to-date
 echo "Compiling (Debug Mode)..."
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o $BINARY -ldflags "-X 'main.DEBUG_MODE=true'" .
+GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -o $BINARY -ldflags "-X 'main.DEBUG_MODE=true'" .
 
 # 2. Now calculate hashes
 LOCAL_HASH=$(md5sum $BINARY | cut -d' ' -f1)
@@ -20,7 +20,7 @@ if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
 else
     echo "Hashes differ. Updating target..."
     cp ./$BINARY ./rakian_debugger
-    scp -q ./rakian_debugger root@$TARGET:$REMOTE_PATH
+    scp ./rakian_debugger root@$TARGET:$REMOTE_PATH
 fi
 
 echo "Launching..."

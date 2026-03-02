@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"lcd"
 	"misc"
-	"sh1107"
 	"timers"
 )
 
@@ -26,8 +26,8 @@ func (m *Menu) NewDummyMenu() *DummyMenu {
 }
 
 func (instance *DummyMenu) render() {
-	instance.parent.Display.Clear(sh1107.Black)
-	font := instance.parent.Display.Use_Font8_Bold()
+	instance.parent.Display.Clear(lcd.White)
+	font := instance.parent.Display.Use_Font_Small_Bold()
 	instance.parent.Display.DrawText(50, 50, font, "DUMMY", false)
 	instance.parent.Display.Render()
 }
@@ -76,7 +76,7 @@ func (instance *DummyMenu) Run() {
 				if evt.State {
 
 					instance.parent.Timers["keypad"].Reset()
-					instance.parent.Timers["oled"].Reset()
+					instance.parent.Timers["screensaver"].Reset()
 					instance.parent.Display.On()
 					misc.KeyLightsOn()
 					go instance.parent.PlayKey()

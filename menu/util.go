@@ -1,15 +1,18 @@
 package menu
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"image"
+	"lcd"
 	"log"
+	"math"
 	"misc"
-	"sh1107"
+	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/Wifx/gonetworkmanager/v3"
 )
 
 const (
@@ -17,6 +20,12 @@ const (
 	T9Uppercase = 1
 	T9Numbers   = 2
 )
+
+type InputPromptArgs struct {
+	Title           string
+	CharacterLimit  int
+	PhoneNumberOnly bool
+}
 
 func (m *Menu) PlayAlert() {
 	if m.Get("BeepOnly").(bool) {
@@ -32,220 +41,225 @@ func (m *Menu) PlayAlert() {
 	}
 }
 
-func (m *Menu) PlayKey() {
+func (m *Menu) PlayAccepted() {
 	if m.Get("BeepOnly").(bool) {
-		m.Player.Tone(82, 2)
+		m.Player.Tone(89, 5)
 		time.Sleep(50 * time.Millisecond)
 		m.Player.Stop()
 	} else if m.Get("CanRing").(bool) {
-		m.Player.Tone(82, 2)
+		m.Player.Tone(89, 5)
+		time.Sleep(500 * time.Millisecond)
+		m.Player.Stop()
+	}
+}
+
+func (m *Menu) PlayKey() {
+	if m.Get("BeepOnly").(bool) {
+		m.Player.Tone(81.5, 1)
+		time.Sleep(50 * time.Millisecond)
+		m.Player.Stop()
+	} else if m.Get("CanRing").(bool) {
+		m.Player.Tone(81.5, 1)
 		time.Sleep(150 * time.Millisecond)
 		m.Player.Stop()
 	}
 }
 
 func (m *Menu) RenderAlert(icon string, status []string) {
-	font := m.Display.Use_Font16()
-	m.Display.Clear(sh1107.Black)
+	font := m.Display.Use_Font_Large_Bold()
+	m.Display.Clear(lcd.White)
 	if icon != "" {
-		m.Display.DrawImageAligned(m.Sprites[icon], 120, 40, sh1107.AlignLeft, sh1107.AlignBelow)
+		if sprite, ok := m.Display.Use_Sprites()[icon]; ok {
+			m.Display.DrawImageAligned(sprite, 84, 0, lcd.AlignLeft, lcd.AlignBelow)
+		} else {
+			log.Printf("⚠️ Sprite '%s' not found", icon)
+		}
 	}
 	for i, str := range status {
-		m.Display.DrawText(0, 36+(i*16), font, str, false)
+		m.Display.DrawText(0, 0+(i*16), font, str, false)
 	}
 	m.Display.Render()
 }
 
-func (m *Menu) RenderBatteryIcon(flash *bool) {
-	if !m.Get("BatteryOK").(bool) {
-		if *flash {
-			m.Display.DrawImage(m.Sprites["battery/0"], 105, 20)
-		} else {
-			m.Display.DrawImage(m.Sprites["battery/unknown"], 105, 20)
-		}
+func (m *Menu) RenderAnimatedAlert(animation string, ctx context.Context, status []string) {
+	font := m.Display.Use_Font_Large_Bold()
+	m.Display.Clear(lcd.White)
+	for i, str := range status {
+		m.Display.DrawText(0, 0+(i*16), font, str, false)
+	}
+	m.Display.Render()
+	go m.Display.PlayAnimation(ctx, animation, 84, 0, lcd.AlignLeft, lcd.AlignBelow)
+}
 
-	} else if m.Get("BatteryCharging").(bool) {
-		if *flash {
-			m.Display.DrawImage(m.Sprites["battery/0"], 105, 20)
-		} else {
-			m.Display.DrawImage(m.Sprites[fmt.Sprintf("battery/%d", m.Get("BatteryScaledPercent").(int))], 105, 20)
-		}
-
+func (m *Menu) RenderFooter(footer string, bold bool) {
+	display := m.Display
+	var font map[rune]image.Image
+	if bold {
+		font = display.Use_Font_Small_Bold()
 	} else {
-		if m.Get("BatteryPercent").(int) <= 5 {
-			if *flash {
-				m.Display.DrawImage(m.Sprites["battery/0"], 105, 20)
-			} else {
-				m.Display.DrawImage(m.Sprites["battery/0_warn"], 105, 20)
-			}
-		} else {
-			m.Display.DrawImage(m.Sprites[fmt.Sprintf("battery/%d", m.Get("BatteryScaledPercent").(int))], 105, 20)
+		font = display.Use_Font_Small_Plain()
+	}
+	display.DrawTextAligned(42, 48, font, footer, false, lcd.AlignCenter, lcd.AlignAbove)
+}
+
+func (m *Menu) RenderHeader(header string) {
+	display := m.Display
+	font := display.Use_Font_Small_Plain()
+	width, _ := display.GetTextBounds(font, header)
+	display.DrawTextAligned(42, 0, font, header, false, lcd.AlignCenter, lcd.AlignBelow)
+
+	// If the header text is too long, limit the width to 84
+	if width > 84 {
+		width = 84
+	}
+
+	// Get the positions of the left and right lines
+	left_start := 42 - (width / 2) - 2
+	right_start := 42 + (width / 2) + 1
+
+	// Draw lines around the header text
+	display.SetColor(lcd.Black)
+	display.DrawRectangle(0, 3, float64(left_start), 1)
+	display.Fill()
+	display.DrawRectangle(float64(right_start), 3, float64(84-right_start), 1)
+	display.Fill()
+}
+
+func (instance *Menu) RenderStateCommon() {
+	m := instance
+	display := m.Display
+
+	// Read clock
+	now := time.Now().In(time.Local)
+	hour := now.Hour() % 12
+	if hour == 0 {
+		hour = 12
+	}
+	clock_str := fmt.Sprintf("%2d:%02d", hour, now.Minute())
+
+	// Draw clock
+	font := display.Use_Font_Tiny()
+	display.DrawTextAligned(77, 0, font, clock_str, false, lcd.AlignLeft, lcd.AlignNone)
+
+	// Draw icons
+	if cell_sprite, ok := display.Use_Sprites()["cell"]; ok {
+		display.DrawImageAligned(cell_sprite, 0, 38, lcd.AlignRight, lcd.AlignAbove)
+	}
+	if battery_sprite, ok := display.Use_Sprites()["battery"]; ok {
+		display.DrawImageAligned(battery_sprite, 84, 38, lcd.AlignLeft, lcd.AlignAbove)
+	}
+
+	battery_state := m.Get("BatteryScaledPercent").(int)
+	if battery_state > 0 {
+		display.SetColor(lcd.Black)
+		display.SetLineWidth(1)
+		if battery_state == 4 {
+			display.DrawRectangle(79, 0, 5, 7)
+			display.Fill()
+		}
+		if battery_state >= 3 {
+			display.DrawRectangle(81, 8, 3, 7)
+			display.Fill()
+		}
+		if battery_state >= 2 {
+			display.DrawRectangle(82, 16, 2, 7)
+			display.Fill()
+		}
+		if battery_state >= 1 {
+			display.DrawRectangle(82, 24, 2, 7)
+			display.Fill()
+		}
+	}
+
+	if m.Phone.OK {
+		display.SetColor(lcd.Black)
+		display.SetLineWidth(1)
+		if m.Phone.SignalStrength >= 4 {
+			display.DrawRectangle(0, 0, 5, 7)
+			display.Fill()
+		}
+		if m.Phone.SignalStrength >= 3 {
+			display.DrawRectangle(0, 8, 3, 7)
+			display.Fill()
+		}
+		if m.Phone.SignalStrength >= 2 {
+			display.DrawRectangle(0, 16, 2, 7)
+			display.Fill()
+		}
+		if m.Phone.SignalStrength >= 1 {
+			display.DrawRectangle(0, 24, 2, 7)
+			display.Fill()
 		}
 	}
 }
 
-func (m *Menu) RenderStatusBar(batt_flash *bool, data_flash *bool) {
-	m.RenderBatteryIcon(batt_flash)
+func (instance *Menu) playDTMF(key rune) {
 
-	// Create first counter to determine element spacing
-	multi_render_width := 0
-	const multi_render_padding = 1
-
-	modem_image_width := 0
-
-	// === STAGE 1: MODEM ===
-	if m.Modem != nil {
-
-		// == 1.1: NETWORK GENERATION ===
-
-		netgen_font := m.Display.Use_Font8_Bold()
-		netgen_width, _ := m.Display.GetTextBounds(netgen_font, m.Modem.NetworkGeneration)
-		m.Display.DrawTextAligned(multi_render_width, 21, netgen_font, m.Modem.NetworkGeneration, false, sh1107.AlignRight, sh1107.AlignNone)
-
-		// Update the counter
-		multi_render_width += netgen_width + multi_render_padding
-
-		// === 1.2: SIGNAL STATUS ===
-
-		// Get modem state
-		cell_image := "cell/no_sim"
-		if m.Modem.FlightMode {
-			// Set the icon to airplane mode
-			cell_image = "cell/airplane"
-		} else if m.Modem.SimCardInserted {
-			// Set the icon to the signal strength
-			cell_image = fmt.Sprintf("cell/%d", m.Modem.SignalStrength)
-		}
-
-		// Get the width of the modem icon state
-		modem_image_width, _ = m.Display.GetImageBounds(m.Sprites[cell_image])
-
-		// Draw the icon
-		m.Display.DrawImage(m.Sprites[cell_image], multi_render_width, 20)
-
-		// 1.3: DATA STATUS
-		data_image := ""
-		data_show := false
-		if !m.Modem.FlightMode {
-			if m.Modem.Connected {
-				if m.Modem.DataEnabled {
-					if m.Modem.DataConnected {
-						data_show = *data_flash
-						data_image = "cell/data_active"
-					} else {
-						data_show = true
-						data_image = "cell/data_inactive"
-					}
-				}
-			}
-		}
-
-		// Get the width of the data icon and draw it
-		data_image_width := 0
-
-		if data_image != "" {
-			data_image_width, _ = m.Display.GetImageBounds(m.Sprites[data_image])
-		}
-
-		if data_show {
-			m.Display.DrawImage(m.Sprites[data_image], multi_render_width+modem_image_width+multi_render_padding, 20)
-		}
-
-		// Update the counter
-		multi_render_width += data_image_width + multi_render_padding
-
-	} else {
-		modem_image_width, _ = m.Display.GetImageBounds(m.Sprites["cell/off"])
-		m.Display.DrawImage(m.Sprites["cell/off"], multi_render_width, 20)
+	// Don't generate tones if we're mute
+	if !instance.Get("CanRing").(bool) && !instance.Get("BeepOnly").(bool) {
+		return
 	}
 
-	multi_render_width += modem_image_width + multi_render_padding
-
-	// === STAGE 2: WIFI STATUS ===
-
-	network_enabled, err := m.NetworkManager.GetPropertyNetworkingEnabled()
-	if err != nil {
-		log.Println("⚠️ Failed to get network status:", err)
+	var f1, f2 float64
+	switch key {
+	case '1':
+		f1, f2 = 697, 1209
+	case '2':
+		f1, f2 = 697, 1336
+	case '3':
+		f1, f2 = 697, 1477
+	case '4':
+		f1, f2 = 770, 1209
+	case '5':
+		f1, f2 = 770, 1336
+	case '6':
+		f1, f2 = 770, 1477
+	case '7':
+		f1, f2 = 852, 1209
+	case '8':
+		f1, f2 = 852, 1336
+	case '9':
+		f1, f2 = 852, 1477
+	case '*':
+		f1, f2 = 941, 1209
+	case '0':
+		f1, f2 = 941, 1336
+	case '#':
+		f1, f2 = 941, 1477
+	default:
+		return
 	}
 
-	wifi_enabled, err := m.NetworkManager.GetPropertyWirelessEnabled()
-	if err != nil {
-		log.Println("⚠️ Failed to get WiFi status:", err)
+	const sampleRate = 44100
+	var duration = 200 * time.Millisecond
+
+	// Use shorter tones if we're in discreet mode
+	if instance.Get("BeepOnly").(bool) {
+		duration = 50 * time.Millisecond
 	}
 
-	network_status, err := m.NetworkManager.GetPropertyState()
-	if err != nil {
-		log.Println("⚠️ Failed to get network status:", err)
-	} else {
-		// Check if the network is alive
-		netstate_width := 0
+	numSamples := int(sampleRate * duration.Seconds())
 
-		if network_enabled && wifi_enabled {
-			if network_status == gonetworkmanager.NmStateConnectedLocal ||
-				network_status == gonetworkmanager.NmStateConnectedSite {
-				netstate_width, _ = m.Display.GetImageBounds(m.Sprites["wifi/no_internet"])
-				m.Display.DrawImage(m.Sprites["wifi/no_internet"], multi_render_width, 20)
-			}
-		}
-
-		// Update the counter
-		multi_render_width += netstate_width + multi_render_padding
+	buf := new(bytes.Buffer)
+	for i := 0; i < numSamples; i++ {
+		t := float64(i) / float64(sampleRate)
+		val := 0.5*math.Sin(2*math.Pi*f1*t) + 0.5*math.Sin(2*math.Pi*f2*t)
+		binary.Write(buf, binary.LittleEndian, int16(val*32767))
 	}
 
-	// Show the WiFi status icon
-	var wifi_icon_target string
-
-	if network_enabled && wifi_enabled {
-		if m.Get("WiFi_Connected").(bool) {
-			wifi_icon_target = fmt.Sprintf("wifi/%d", m.Get("WiFi_Strength").(int))
-		} else {
-			wifi_icon_target = "wifi/no_networks"
-		}
-	}
-
-	// Get the width of the wifi icon
-	wifi_icon_width := 0
-	if network_enabled && wifi_icon_target != "" {
-		wifi_icon_width, _ = m.Display.GetImageBounds(m.Sprites[wifi_icon_target])
-
-		// Draw the icon
-		m.Display.DrawImage(m.Sprites[wifi_icon_target], multi_render_width, 20)
-	}
-
-	// Update the counter
-	multi_render_width += wifi_icon_width + multi_render_padding
-
-	// === STAGE 3: BLUETOOTH STATUS ===
-
-	if m.Get("BluetoothEnabled").(bool) {
-		bluetooth_icon := "bluetooth/idle"
-
-		// TODO: check if bluetooth has any active connections
-
-		// Get the width of the bluetooth icon
-		bluetooth_icon_width, _ := m.Display.GetImageBounds(m.Sprites[bluetooth_icon])
-
-		// Draw the icon
-		m.Display.DrawImage(m.Sprites[bluetooth_icon], multi_render_width, 20)
-
-		// Update the counter
-		multi_render_width += bluetooth_icon_width + multi_render_padding
-	}
-
-	// Update to add further stages as necessary
-
-	// At the end, draw the borderline below the status bar
-	m.Display.SetColor(sh1107.White)
-	m.Display.SetLineWidth(1)
-	m.Display.DrawLine(0, 33, 127, 33)
-	m.Display.Stroke()
+	go func() {
+		cmd := exec.Command("aplay", "-f", "S16_LE", "-r", "44100", "-c", "1", "-q")
+		cmd.Stdin = buf
+		_ = cmd.Run()
+	}()
 }
 
-func (instance *Menu) EnterText(title string, ctx context.Context) string {
+func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) string {
 
 	// Text entry handler
 	var input []rune
 	cursorPos := 0
+	scrollOffset := 0
 	display := instance.Display
 
 	// Key mapping
@@ -266,42 +280,69 @@ func (instance *Menu) EnterText(title string, ctx context.Context) string {
 	t9Mode := T9Lowercase
 	var lastKey rune
 	var lastPressTime time.Time
+	var lastAsteriskTime time.Time
 	var cycleIndex int
 
+	if args.PhoneNumberOnly {
+		t9Mode = T9Numbers
+	}
+
 	// Temporarily stop timeouts
-	instance.Timers["oled"].Stop()
+	instance.Timers["screensaver"].Stop()
 	instance.Timers["keypad"].Stop()
 	misc.KeyLightsOn()
-	defer instance.Timers["oled"].Restart()
+	defer instance.Timers["screensaver"].Restart()
 	defer instance.Timers["keypad"].Restart()
 
 	render := func() {
-		display.Clear(sh1107.Black)
+		const visibleWidth = 76
+		const textStartX = 4
 
-		// Draw label
-		font := display.Use_Font8_Normal()
-		display.DrawTextAligned(0, 20, font, title, false, sh1107.AlignRight, sh1107.AlignNone)
+		display.Clear(lcd.White)
 
 		// Draw mode helper
-		display.DrawImageAligned(instance.Sprites[t9Map[t9Mode]], 128, 20, sh1107.AlignLeft, sh1107.AlignNone)
+		display.DrawImage(display.Use_Sprites()["pencil"], 0, 0)
+		if !args.PhoneNumberOnly {
+			display.DrawImageAligned(display.Use_Sprites()[t9Map[t9Mode]], 13, 0, lcd.AlignNone, lcd.AlignNone)
+		}
 
-		// Draw line
-		display.SetColor(sh1107.White)
-		display.DrawLine(0, 33, 127, 33)
+		// Draw label
+		font := display.Use_Font_Small_Bold()
+		display.DrawTextWrapped(0, 8, 84, 16, font, args.Title, false, lcd.WrapDown, lcd.WrapLeft)
+
+		// Draw box
+		display.SetColor(lcd.Black)
+		display.SetLineWidth(1)
+		display.DrawRectangle(0.5, 18.5, 83, 17)
 		display.Stroke()
 
-		font = display.Use_Font16()
-		display.DrawText(0, 45, font, string(input), false)
+		// Draw text
+		font = display.Use_Font_Large_Bold()
+
+		// Calculate cursor position and scroll offset
+		prefix := string(input[:cursorPos])
+		cursorPx, _ := display.GetTextBounds(font, prefix)
+
+		if cursorPx < scrollOffset {
+			scrollOffset = cursorPx
+		}
+		if cursorPx > scrollOffset+visibleWidth {
+			scrollOffset = cursorPx - visibleWidth
+		}
+
+		display.DrawText(textStartX-scrollOffset, 20, font, string(input), false)
 
 		// Draw cursor
-		prefix := string(input[:cursorPos])
-		w, _ := display.GetTextBounds(font, prefix)
-		display.DrawLine(float64(w), 45, float64(w), 60)
+		curX := float64(textStartX+cursorPx-scrollOffset) + 0.5
+		display.DrawLine(curX, 20, curX, 33)
 		display.Stroke()
 
 		// Draw bottom
-		font = display.Use_Font8_Bold()
-		display.DrawTextAligned(64, 110, font, "Enter", false, sh1107.AlignCenter, sh1107.AlignNone)
+		if len(input) == 0 {
+			instance.RenderFooter("Cancel", true)
+		} else {
+			instance.RenderFooter("OK", true)
+		}
 		display.Render()
 	}
 
@@ -350,29 +391,70 @@ func (instance *Menu) EnterText(title string, ctx context.Context) string {
 					render()
 				}
 			case '#':
+				if args.PhoneNumberOnly {
+					if args.CharacterLimit > 0 && len(input) >= args.CharacterLimit {
+						continue
+					}
+					input = append(input[:cursorPos], append([]rune{'#'}, input[cursorPos:]...)...)
+					cursorPos++
+					render()
+					continue
+				}
+
 				lastKey = 0
 				t9Mode = (t9Mode + 1) % 3
 				render()
 			case '*':
+				if args.PhoneNumberOnly {
+					if now.Sub(lastAsteriskTime) <= 750*time.Millisecond {
+						if cursorPos > 0 && input[cursorPos-1] == '*' {
+							input[cursorPos-1] = '+'
+							lastAsteriskTime = now
+							render()
+							continue
+						}
+					}
+					if args.CharacterLimit > 0 && len(input) >= args.CharacterLimit {
+						continue
+					}
+					input = append(input[:cursorPos], append([]rune{'*'}, input[cursorPos:]...)...)
+					lastAsteriskTime = now
+					cursorPos++
+					render()
+					continue
+				}
+
 				lastKey = 0
 				// Symbol selector
-				symbols := []rune(".,?!@_()[]{}#%^*+=/|\\<>~'\"")
+				symbols := []rune(".,?!:;-+#*()'\"_@&$£%/<>¿¡§=¤¥є")
 				selIdx := 0
 
 				// Mini loop for symbol selection
 			symbolLoop:
 				for {
-					display.Clear(sh1107.Black)
-					font := display.Use_Font8_Normal()
-					display.DrawTextAligned(64, 20, font, "Select Symbol", false, sh1107.AlignCenter, sh1107.AlignNone)
+					display.Clear(lcd.White)
 
-					// Draw symbols grid (5 per row)
-					font = display.Use_Font16()
+					// Draw mode helper
+					display.DrawImage(display.Use_Sprites()["pencil"], 0, 0)
+					display.DrawImageAligned(display.Use_Sprites()["symbols"], 13, 0, lcd.AlignNone, lcd.AlignNone)
+
+					// Draw symbols grid
 					for i, r := range symbols {
-						x := (i%5)*20 + 1
-						y := 40 + (i/5)*15
-						display.DrawText(x, y, font, string(r), i == selIdx)
+						col := i % 10
+						row := i / 10
+						x := 2 + col*8
+						y := 8 + row*10
+						if i == selIdx {
+							display.SetColor(lcd.Black)
+							display.DrawRectangle(float64(x), float64(y)-1, 8, 10)
+							display.Fill()
+							display.DrawText(x+2, y, display.Use_Font_Small_Bold(), string(r), true)
+						} else {
+							display.DrawText(x+2, y, display.Use_Font_Small_Plain(), string(r), false)
+						}
 					}
+
+					instance.RenderFooter("Use", true)
 					display.Render()
 
 					select {
@@ -387,21 +469,26 @@ func (instance *Menu) EnterText(title string, ctx context.Context) string {
 						case 'U': // Left
 							if selIdx > 0 {
 								selIdx--
+							} else if selIdx == 0 {
+								selIdx = len(symbols) - 1
 							}
 						case 'D': // Right
 							if selIdx < len(symbols)-1 {
 								selIdx++
 							}
 						case '2': // Up
-							if selIdx >= 5 {
-								selIdx -= 5
+							if selIdx >= 10 {
+								selIdx -= 10
 							}
 						case '8': // Down
-							if selIdx+5 < len(symbols) {
-								selIdx += 5
+							if selIdx+10 < len(symbols) {
+								selIdx += 10
 							}
 						case 'S': // Select
 							// Insert symbol
+							if args.CharacterLimit > 0 && len(input) >= args.CharacterLimit {
+								break symbolLoop
+							}
 							input = append(input[:cursorPos], append([]rune{symbols[selIdx]}, input[cursorPos:]...)...)
 							cursorPos++
 							break symbolLoop
@@ -413,6 +500,18 @@ func (instance *Menu) EnterText(title string, ctx context.Context) string {
 				render()
 
 			default:
+				if args.PhoneNumberOnly {
+					if evt.Key >= '0' && evt.Key <= '9' {
+						if args.CharacterLimit > 0 && len(input) >= args.CharacterLimit {
+							continue
+						}
+						input = append(input[:cursorPos], append([]rune{evt.Key}, input[cursorPos:]...)...)
+						cursorPos++
+						render()
+					}
+					continue
+				}
+
 				chars, ok := keyMap[evt.Key]
 				if ok {
 					// Adjust chars based on mode
@@ -435,6 +534,9 @@ func (instance *Menu) EnterText(title string, ctx context.Context) string {
 					} else {
 						// New char
 						cycleIndex = 0
+						if args.CharacterLimit > 0 && len(input) >= args.CharacterLimit {
+							continue
+						}
 						// Insert at cursor
 						newChar := rune(chars[0])
 						input = append(input[:cursorPos], append([]rune{newChar}, input[cursorPos:]...)...)

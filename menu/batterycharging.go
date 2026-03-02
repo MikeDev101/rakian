@@ -3,12 +3,11 @@ package menu
 import (
 	"context"
 	"log"
+	"misc"
 	"sync"
 	"time"
-
-	// "sh1107"
+	// "lcd"
 	// "timers"
-	"misc"
 )
 
 type BatteryChargingAlert struct {
@@ -26,7 +25,7 @@ func (m *Menu) NewBatteryChargingAlert() *BatteryChargingAlert {
 }
 
 func (instance *BatteryChargingAlert) render() {
-	instance.parent.RenderAlert("battery_charging", []string{"Battery", "charging"})
+	instance.parent.RenderAnimatedAlert("charging", instance.ctx, []string{"Battery", "charging"})
 }
 
 func (instance *BatteryChargingAlert) Configure() {
@@ -45,19 +44,12 @@ func (instance *BatteryChargingAlert) Run() {
 		panic("Attempted to call (*BatteryChargingAlert).Run() before (*BatteryChargingAlert).Configure()!")
 	}
 
-	if instance.parent.Get("CanVibrate").(bool) {
-		instance.wg.Add(1)
-		go func() {
-			defer instance.wg.Done()
-			misc.VibrateAlert(instance.parent.Player, instance.ctx)
-		}()
-	}
-
 	if instance.parent.Get("CanRing").(bool) || instance.parent.Get("BeepOnly").(bool) {
 		instance.wg.Add(1)
 		go func() {
 			defer instance.wg.Done()
 			misc.PlayBeep(instance.parent.Player, instance.ctx)
+			// instance.parent.PlayAlert()
 		}()
 	}
 
@@ -71,7 +63,7 @@ func (instance *BatteryChargingAlert) Run() {
 			return
 
 		case <-time.After(3 * time.Second):
-			instance.parent.Timers["oled"].Restart()
+			instance.parent.Timers["screensaver"].Restart()
 			instance.parent.Timers["keypad"].Restart()
 			go instance.parent.Pop()
 			return
