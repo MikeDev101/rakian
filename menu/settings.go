@@ -3,7 +3,7 @@ package menu
 import (
 	"context"
 	"fmt"
-	"lcd"
+	"gfx"
 	"log"
 	"misc"
 	"os/exec"
@@ -47,16 +47,16 @@ func (instance *SettingsMenu) RenderAbout() {
 	m := instance.parent
 	display := m.Display
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	m.RenderHeader("About")
 
 	font := display.Use_Font_Small_Plain()
-	display.DrawTextAligned(0, 10, font, "Rakian OS", false, lcd.AlignNone, lcd.AlignNone)
-	display.DrawTextAligned(0, 19, font, fmt.Sprintf("v%s", m.Get("FirmwareVersion").(string)), false, lcd.AlignNone, lcd.AlignNone)
-	display.DrawTextAligned(0, 28, font, misc.GetOSVersion(), false, lcd.AlignNone, lcd.AlignNone)
+	display.DrawTextAligned(0, 10, font, "Rakian OS", false, gfx.AlignNone, gfx.AlignNone)
+	display.DrawTextAligned(0, 19, font, fmt.Sprintf("v%s", m.Get("FirmwareVersion").(string)), false, gfx.AlignNone, gfx.AlignNone)
+	display.DrawTextAligned(0, 28, font, misc.GetOSVersion(), false, gfx.AlignNone, gfx.AlignNone)
 
 	m.RenderFooter("Return", true)
 	display.Render()
@@ -70,17 +70,17 @@ func (instance *SettingsMenu) RenderInternetStatus(state_msg string, network_inf
 	m := instance.parent
 	display := m.Display
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	m.RenderHeader("Internet Status")
 
 	font := display.Use_Font_Small_Plain()
-	display.DrawTextAligned(0, 8, font, state_msg, false, lcd.AlignNone, lcd.AlignNone)
+	display.DrawTextAligned(0, 8, font, state_msg, false, gfx.AlignNone, gfx.AlignNone)
 
 	if net_conn, err := network_info.GetPropertyID(); err == nil {
-		display.DrawTextAligned(0, 16, font, net_conn, false, lcd.AlignNone, lcd.AlignNone)
+		display.DrawTextAligned(0, 16, font, net_conn, false, gfx.AlignNone, gfx.AlignNone)
 	}
 
 	if net_ipv4_cfg, err := network_info.GetPropertyIP4Config(); err == nil {
@@ -88,8 +88,8 @@ func (instance *SettingsMenu) RenderInternetStatus(state_msg string, network_inf
 		if err == nil {
 			net_ipv4_addr := net_ipv4_addrs[0].Address
 			net_ipv4_addr += "/" + fmt.Sprint(net_ipv4_addrs[0].Prefix)
-			display.DrawTextAligned(0, 24, font, net_ipv4_addr, false, lcd.AlignNone, lcd.AlignNone)
-			display.DrawTextAligned(0, 32, font, net_ipv4_addrs[0].Gateway, false, lcd.AlignNone, lcd.AlignNone)
+			display.DrawTextAligned(0, 24, font, net_ipv4_addr, false, gfx.AlignNone, gfx.AlignNone)
+			display.DrawTextAligned(0, 32, font, net_ipv4_addrs[0].Gateway, false, gfx.AlignNone, gfx.AlignNone)
 		}
 	}
 
@@ -805,8 +805,8 @@ func (instance *SettingsMenu) Run() {
 	m := instance.parent
 	display := m.Display
 
-	if display.DrawLock.TryLock() {
-		display.DrawLock.Unlock()
+	if display.TryLock() {
+		display.Unlock()
 	}
 
 	log.Println("⚙️ Settings started")

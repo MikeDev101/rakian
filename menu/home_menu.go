@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"lcd"
+	"gfx"
 	"misc"
 )
 
@@ -55,21 +55,21 @@ func (instance *HomeSelectionMenu) render() {
 	display := m.Display
 	label := instance.options[instance.selection][0]
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	m.RenderFooter("Select", true)
 
 	font := display.Use_Font_Small_Bold()
-	display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", int(instance.selection+1)), false, lcd.AlignLeft, lcd.AlignNone)
+	display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", int(instance.selection+1)), false, gfx.AlignLeft, gfx.AlignNone)
 
 	font = display.Use_Font_Large_Bold()
-	display.DrawTextAligned(40, 8, font, label, false, lcd.AlignCenter, lcd.AlignBelow)
+	display.DrawTextAligned(40, 8, font, label, false, gfx.AlignCenter, gfx.AlignBelow)
 
 	anim := instance.options[instance.selection][1]
 	display.Render()
-	go display.PlayAnimation(instance.animCtx, anim, 40, 36, lcd.AlignCenter, lcd.AlignAbove)
+	go display.PlayAnimation(instance.animCtx, anim, 40, 36, gfx.AlignCenter, gfx.AlignAbove)
 }
 
 func (instance *HomeSelectionMenu) handle_selection() {

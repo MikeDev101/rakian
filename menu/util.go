@@ -3,8 +3,8 @@ package menu
 import (
 	"context"
 	"fmt"
+	"gfx"
 	"image"
-	"lcd"
 	"log"
 	"time"
 )
@@ -55,10 +55,10 @@ func (m *Menu) PlayKey() {
 
 func (m *Menu) RenderAlert(icon string, status []string) {
 	font := m.Display.Use_Font_Large_Bold()
-	m.Display.Clear(lcd.White)
+	m.Display.Clear(m.Display.Primary())
 	if icon != "" {
 		if sprite, ok := m.Display.Use_Sprites()[icon]; ok {
-			m.Display.DrawImageAligned(sprite, 84, 0, lcd.AlignLeft, lcd.AlignBelow)
+			m.Display.DrawImageAligned(sprite, 84, 0, gfx.AlignLeft, gfx.AlignBelow)
 		} else {
 			log.Printf("⚠️ Sprite '%s' not found", icon)
 		}
@@ -71,30 +71,30 @@ func (m *Menu) RenderAlert(icon string, status []string) {
 
 func (m *Menu) RenderAnimatedAlert(animation string, ctx context.Context, status []string) {
 	font := m.Display.Use_Font_Large_Bold()
-	m.Display.Clear(lcd.White)
+	m.Display.Clear(m.Display.Primary())
 	for i, str := range status {
 		m.Display.DrawText(0, 0+(i*16), font, str, false)
 	}
 	m.Display.Render()
-	go m.Display.PlayAnimation(ctx, animation, 84, 0, lcd.AlignLeft, lcd.AlignBelow)
+	go m.Display.PlayAnimation(ctx, animation, 84, 0, gfx.AlignLeft, gfx.AlignBelow)
 }
 
 func (m *Menu) RenderFooter(footer string, bold bool) {
 	display := m.Display
-	var font map[rune]image.Image
+	var font map[rune]*image.Image
 	if bold {
 		font = display.Use_Font_Small_Bold()
 	} else {
 		font = display.Use_Font_Small_Plain()
 	}
-	display.DrawTextAligned(42, 48, font, footer, false, lcd.AlignCenter, lcd.AlignAbove)
+	display.DrawTextAligned(42, 48, font, footer, false, gfx.AlignCenter, gfx.AlignAbove)
 }
 
 func (m *Menu) RenderHeader(header string) {
 	display := m.Display
 	font := display.Use_Font_Small_Plain()
 	width, _ := display.GetTextBounds(font, header)
-	display.DrawTextAligned(42, 0, font, header, false, lcd.AlignCenter, lcd.AlignBelow)
+	display.DrawTextAligned(42, 0, font, header, false, gfx.AlignCenter, gfx.AlignBelow)
 
 	// If the header text is too long, limit the width to 84
 	if width > 84 {
@@ -106,7 +106,7 @@ func (m *Menu) RenderHeader(header string) {
 	right_start := 42 + (width / 2) + 1
 
 	// Draw lines around the header text
-	display.SetColor(lcd.Black)
+	display.SetColor(display.Secondary())
 	display.DrawRectangle(0, 3, float64(left_start), 1)
 	display.Fill()
 	display.DrawRectangle(float64(right_start), 3, float64(84-right_start), 1)
@@ -127,19 +127,19 @@ func (instance *Menu) RenderStateCommon() {
 
 	// Draw clock
 	font := display.Use_Font_Tiny()
-	display.DrawTextAligned(77, 0, font, clock_str, false, lcd.AlignLeft, lcd.AlignNone)
+	display.DrawTextAligned(77, 0, font, clock_str, false, gfx.AlignLeft, gfx.AlignNone)
 
 	// Draw icons
 	if cell_sprite, ok := display.Use_Sprites()["cell"]; ok {
-		display.DrawImageAligned(cell_sprite, 0, 38, lcd.AlignRight, lcd.AlignAbove)
+		display.DrawImageAligned(cell_sprite, 0, 38, gfx.AlignRight, gfx.AlignAbove)
 	}
 	if battery_sprite, ok := display.Use_Sprites()["battery"]; ok {
-		display.DrawImageAligned(battery_sprite, 84, 38, lcd.AlignLeft, lcd.AlignAbove)
+		display.DrawImageAligned(battery_sprite, 84, 38, gfx.AlignLeft, gfx.AlignAbove)
 	}
 
 	battery_state := m.Get("BatteryScaledPercent").(int)
 	if battery_state > 0 {
-		display.SetColor(lcd.Black)
+		display.SetColor(display.Secondary())
 		display.SetLineWidth(1)
 		if battery_state == 4 {
 			display.DrawRectangle(79, 0, 5, 7)
@@ -160,7 +160,7 @@ func (instance *Menu) RenderStateCommon() {
 	}
 
 	if m.Phone.OK {
-		display.SetColor(lcd.Black)
+		display.SetColor(display.Secondary())
 		display.SetLineWidth(1)
 		if m.Phone.SignalStrength >= 4 {
 			display.DrawRectangle(0, 0, 5, 7)

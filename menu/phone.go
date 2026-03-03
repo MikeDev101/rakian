@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"modem"
 
-	// "fmt"
+	"gfx"
 	"log"
 	"sync"
 	"time"
 
-	"lcd"
 	"misc"
 	"timers"
 )
@@ -43,17 +42,17 @@ func (instance *PhoneMenu) render() {
 	m := instance.parent
 	display := m.Display
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	m.RenderStateCommon()
 
-	display.DrawTextAligned(8, 10, display.Use_Font_Small_Bold(), instance.call.Number, false, lcd.AlignNone, lcd.AlignNone)
-	display.DrawTextAligned(8, 18, display.Use_Font_Small_Plain(), instance.call.State, false, lcd.AlignNone, lcd.AlignNone)
+	display.DrawTextAligned(8, 10, display.Use_Font_Small_Bold(), instance.call.Number, false, gfx.AlignNone, gfx.AlignNone)
+	display.DrawTextAligned(8, 18, display.Use_Font_Small_Plain(), instance.call.State, false, gfx.AlignNone, gfx.AlignNone)
 	if instance.call.Active {
 		d := time.Since(instance.call.StartTime)
-		display.DrawTextAligned(8, 26, display.Use_Font_Tiny(), fmt.Sprintf("%02d:%02d:%02d", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60), false, lcd.AlignRight, lcd.AlignNone)
+		display.DrawTextAligned(8, 26, display.Use_Font_Tiny(), fmt.Sprintf("%02d:%02d:%02d", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60), false, gfx.AlignRight, gfx.AlignNone)
 	}
 
 	if instance.options_active {
@@ -112,7 +111,7 @@ func (instance *PhoneMenu) Run() {
 				return
 
 			case <-time.After(100 * time.Millisecond):
-				if m.Display.IsOn && !instance.selector_active {
+				if m.Display.IsOn() && !instance.selector_active {
 					instance.render()
 				}
 			}

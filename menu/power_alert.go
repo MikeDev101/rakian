@@ -74,8 +74,8 @@ func (instance *GenericAlert) Run() {
 
 	m := instance.parent
 	display := m.Display
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
 	// Reset context
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)

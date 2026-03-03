@@ -1,12 +1,11 @@
-package lcd
+package gfx
 
 import (
 	"fmt"
 	"image"
-	"log"
 )
 
-var Font_large_bold_rune_map = map[rune]string{
+var Font_small_bold_rune_map = map[rune]string{
 	' ':  "0020",
 	'!':  "0021",
 	'"':  "0022",
@@ -260,53 +259,30 @@ var Font_large_bold_rune_map = map[rune]string{
 	'':  "e000",
 }
 
-func (d *LCD) load_font_large_bold_rune(char rune) (image.Image, error) {
-	relPath, ok := Font_large_bold_rune_map[char]
+func load_font_small_bold_rune(char rune) (*image.Image, error) {
+	relPath, ok := Font_small_bold_rune_map[char]
 	if !ok {
-		return nil, fmt.Errorf("Rune %c not found in font large bold", char)
+		return nil, fmt.Errorf("Rune %c not found in font small bold", char)
 	}
-	filePath := "sprites/fonts/largebold/" + relPath + ".bmp"
+	filePath := "sprites/fonts/smallbold/" + relPath + ".bmp"
 
 	img, err := LoadSprite(filePath)
 
 	return img, err
 }
 
-func (d *LCD) Use_Font_Large_Bold() map[rune]image.Image {
-	const fontPrefix = "largebold"
-	if cache, ok := d.FontCache[fontPrefix]; !ok {
+func Use_Font_Small_Bold(d Driver) map[rune]*image.Image {
+	const fontPrefix = "smallbold"
+	if cache := d.GetFontCache(fontPrefix); cache == nil {
 		panic(fmt.Sprintf("Font %s not loaded", fontPrefix))
 	} else {
 		return cache
 	}
 }
 
-func (d *LCD) Load_Font_Large_Bold() {
-	const fontPrefix = "largebold"
-	mapping := Font_large_bold_rune_map
-	mapfunc := d.load_font_large_bold_rune
-
-	// Load all font runes, or load them from d.FontCache
-	for char := range mapping {
-
-		// Create prefix element if it doesn't exist
-		if _, ok := d.FontCache[fontPrefix]; !ok {
-			d.FontCache[fontPrefix] = make(map[rune]image.Image)
-		}
-
-		// Don't re-load the file if already loaded
-		if _, ok := d.FontCache[fontPrefix][char]; ok {
-			continue
-		}
-
-		// Load the rune image
-		img, err := mapfunc(char)
-		if err != nil {
-			log.Printf("Font load failed for '%c': %v", char, err)
-			continue
-		}
-
-		// Keep loaded in memory
-		d.FontCache[fontPrefix][char] = img
-	}
+func Load_Font_Small_Bold(d Driver) {
+	const fontPrefix = "smallbold"
+	mapping := Font_small_bold_rune_map
+	mapfunc := load_font_small_bold_rune
+	Load_Font_Map(fontPrefix, mapping, mapfunc, d)
 }

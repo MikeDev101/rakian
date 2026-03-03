@@ -1,9 +1,8 @@
-package lcd
+package gfx
 
 import (
 	"fmt"
 	"image"
-	"log"
 )
 
 var Font_small_plain_rune_map = map[rune]string{
@@ -260,7 +259,7 @@ var Font_small_plain_rune_map = map[rune]string{
 	'':  "e000",
 }
 
-func (d *LCD) load_font_small_plain_rune(char rune) (image.Image, error) {
+func load_font_small_plain_rune(char rune) (*image.Image, error) {
 	relPath, ok := Font_small_plain_rune_map[char]
 	if !ok {
 		return nil, fmt.Errorf("Rune %c not found in font small plain", char)
@@ -272,41 +271,18 @@ func (d *LCD) load_font_small_plain_rune(char rune) (image.Image, error) {
 	return img, err
 }
 
-func (d *LCD) Use_Font_Small_Plain() map[rune]image.Image {
+func Use_Font_Small_Plain(d Driver) map[rune]*image.Image {
 	const fontPrefix = "smallplain"
-	if cache, ok := d.FontCache[fontPrefix]; !ok {
+	if cache := d.GetFontCache(fontPrefix); cache == nil {
 		panic(fmt.Sprintf("Font %s not loaded", fontPrefix))
 	} else {
 		return cache
 	}
 }
 
-func (d *LCD) Load_Font_Small_Plain() {
+func Load_Font_Small_Plain(d Driver) {
 	const fontPrefix = "smallplain"
 	mapping := Font_small_plain_rune_map
-	mapfunc := d.load_font_small_plain_rune
-
-	// Load all font runes, or load them from d.FontCache
-	for char := range mapping {
-
-		// Create prefix element if it doesn't exist
-		if _, ok := d.FontCache[fontPrefix]; !ok {
-			d.FontCache[fontPrefix] = make(map[rune]image.Image)
-		}
-
-		// Don't re-load the file if already loaded
-		if _, ok := d.FontCache[fontPrefix][char]; ok {
-			continue
-		}
-
-		// Load the rune image
-		img, err := mapfunc(char)
-		if err != nil {
-			log.Printf("Font load failed for '%c': %v", char, err)
-			continue
-		}
-
-		// Keep loaded in memory
-		d.FontCache[fontPrefix][char] = img
-	}
+	mapfunc := load_font_small_plain_rune
+	Load_Font_Map(fontPrefix, mapping, mapfunc, d)
 }

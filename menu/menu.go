@@ -2,6 +2,7 @@ package menu
 
 import (
 	"context"
+	"gfx"
 	"log"
 	"runtime/debug"
 	"slices"
@@ -10,7 +11,6 @@ import (
 
 	"db"
 	"keypad"
-	"lcd"
 
 	"modem"
 	"timers"
@@ -37,7 +37,7 @@ type Menu struct {
 	GlobalCancel  context.CancelFunc
 	DebugMode     bool
 
-	Display        *lcd.LCD
+	Display        gfx.Driver
 	Phone          *modem.Modem
 	KeypadEvents   <-chan *keypad.KeypadEvent
 	Timers         map[string]*timers.ResettableTimer
@@ -450,7 +450,7 @@ func waitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 func Init(
 	ctx context.Context,
 	debug bool,
-	display *lcd.LCD,
+	display gfx.Driver,
 	phone *modem.Modem,
 	player *tones.Tones,
 	globalquit func(uint8),

@@ -3,7 +3,7 @@ package menu
 import (
 	"context"
 	"fmt"
-	"lcd"
+	"gfx"
 	"misc"
 	"strings"
 	"time"
@@ -63,23 +63,23 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 		const visibleWidth = 76
 		const textStartX = 4
 
-		display.Clear(lcd.White)
+		display.Clear(display.Primary())
 
 		// Draw mode helper
 		display.DrawImage(display.Use_Sprites()["pencil"], 0, 0)
 		if !args.PhoneNumberOnly {
-			display.DrawImageAligned(display.Use_Sprites()[t9Map[t9Mode]], 13, 0, lcd.AlignNone, lcd.AlignNone)
+			display.DrawImageAligned(display.Use_Sprites()[t9Map[t9Mode]], 13, 0, gfx.AlignNone, gfx.AlignNone)
 		}
 
 		// Draw labels
 		font := display.Use_Font_Small_Bold()
-		display.DrawTextWrapped(0, 8, 84, 16, font, args.Title, false, lcd.WrapDown, lcd.WrapLeft)
+		display.DrawTextWrapped(0, 8, 84, 16, font, args.Title, false, gfx.WrapDown, gfx.WrapLeft)
 		if args.CharacterLimit > 0 {
-			display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", args.CharacterLimit-len(input)), false, lcd.AlignLeft, lcd.AlignBelow)
+			display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", args.CharacterLimit-len(input)), false, gfx.AlignLeft, gfx.AlignBelow)
 		}
 
 		// Draw box
-		display.SetColor(lcd.Black)
+		display.SetColor(display.Secondary())
 		display.SetLineWidth(1)
 		display.DrawRectangle(0.5, 18.5, 83, 17)
 		display.Stroke()
@@ -229,11 +229,11 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 				// Mini loop for symbol selection
 			symbolLoop:
 				for {
-					display.Clear(lcd.White)
+					display.Clear(display.Primary())
 
 					// Draw mode helper
 					display.DrawImage(display.Use_Sprites()["pencil"], 0, 0)
-					display.DrawImageAligned(display.Use_Sprites()["symbols"], 13, 0, lcd.AlignNone, lcd.AlignNone)
+					display.DrawImageAligned(display.Use_Sprites()["symbols"], 13, 0, gfx.AlignNone, gfx.AlignNone)
 
 					// Draw symbols grid
 					for i, r := range symbols {
@@ -242,7 +242,7 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 						x := 2 + col*8
 						y := 8 + row*10
 						if i == selIdx {
-							display.SetColor(lcd.Black)
+							display.SetColor(display.Secondary())
 							display.DrawRectangle(float64(x), float64(y)-1, 8, 10)
 							display.Fill()
 							display.DrawText(x+2, y, display.Use_Font_Small_Bold(), string(r), true)

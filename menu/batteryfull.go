@@ -30,8 +30,8 @@ func (instance *BatteryChargedAlert) Label() string {
 func (instance *BatteryChargedAlert) render() {
 	m := instance.parent
 	display := m.Display
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 	m.RenderAlert("battery_full", []string{"Battery", "charged"})
 }
 

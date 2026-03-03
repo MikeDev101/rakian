@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"gfx"
 	"lcd"
 	"log"
 	"os"
@@ -163,7 +164,7 @@ func main() {
 	defer rpio.SpiEnd(rpio.Spi0)
 
 	lcd_powerdown := func() {
-		display.Clear(lcd.White)
+		display.Clear(display.Primary())
 		display.Render()
 		display.Off()
 	}
@@ -219,7 +220,7 @@ func main() {
 	}()
 
 	// Boot logo
-	logo, err := lcd.LoadSprite("sprites/logo.bmp")
+	logo, err := gfx.LoadSprite("sprites/logo.bmp")
 	if err != nil {
 		log.Fatalf("⚠️ Failed to load logo: %v", err)
 	}
@@ -231,7 +232,7 @@ func main() {
 	display.Load_Sprites()
 
 	// Load animations
-	display.LoadAnimations()
+	display.Load_Animations()
 
 	// Initialize menu system
 	menus := menu.Init(
@@ -260,7 +261,7 @@ func main() {
 	}
 
 	// Play boot animation
-	display.PlayAnimation(ctx, "boot", 0, 0, lcd.AlignNone, lcd.AlignNone)
+	display.PlayAnimation(ctx, "boot", 0, 0, gfx.AlignNone, gfx.AlignNone)
 	time.Sleep(1 * time.Second)
 
 	// Load fonts
@@ -463,7 +464,7 @@ func main() {
 
 	// Persist screen for a moment
 	time.Sleep(time.Second)
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	display.Render()
 
 	// Configure timers
@@ -532,7 +533,7 @@ func main() {
 	if phone != nil {
 		phone.HangupAll()
 	}
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	display.DrawImage(logo, 20, 70)
 	display.Render()
 	display.On()

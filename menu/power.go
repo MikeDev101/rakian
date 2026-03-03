@@ -54,8 +54,8 @@ func (instance *PowerMenu) Run() {
 
 	m := instance.parent
 	display := m.Display
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
 	log.Println("🔋 Power menu started")
 

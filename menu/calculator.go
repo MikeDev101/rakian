@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"lcd"
 	"misc"
 )
 
@@ -39,17 +38,17 @@ func (instance *CalculatorMenu) render() {
 	m := instance.parent
 	display := m.Display
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 
 	m.RenderHeader("Calculator")
 	m.RenderFooter("Options", true)
 
 	display.DrawText(0, 12, display.Use_Font_Large_Bold(), instance.calc_displayed, false)
 
-	display.SetColor(lcd.White)
+	display.SetColor(display.Primary())
 	display.SetLineWidth(1)
 	display.DrawLine(0, 33, 127, 33)
 	display.Stroke()

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"lcd"
+	"gfx"
 	"misc"
 	"timers"
 )
@@ -38,13 +38,13 @@ func (instance *RingMenu) render() {
 	m := instance.parent
 	display := m.Display
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	m.RenderStateCommon()
 
-	display.DrawTextAligned(8, 10, display.Use_Font_Small_Bold(), instance.call.Number, false, lcd.AlignNone, lcd.AlignNone)
+	display.DrawTextAligned(8, 10, display.Use_Font_Small_Bold(), instance.call.Number, false, gfx.AlignNone, gfx.AlignNone)
 
 	m.RenderFooter("Answer", true)
 	display.Render()

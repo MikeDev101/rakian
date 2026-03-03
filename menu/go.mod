@@ -4,6 +4,7 @@ go 1.26.0
 
 replace (
 	db => ../db
+	gfx => ../gfx
 	keypad => ../keypad
 	lcd => ../lcd
 	menu => ../menu
@@ -16,10 +17,10 @@ replace (
 
 require (
 	db v0.0.0-00010101000000-000000000000
+	gfx v0.0.0-00010101000000-000000000000
 	github.com/Wifx/gonetworkmanager/v3 v3.2.0
 	gorm.io/gorm v1.31.1
 	keypad v0.0.0-00010101000000-000000000000
-	lcd v0.0.0-00010101000000-000000000000
 	misc v0.0.0-00010101000000-000000000000
 	modem v0.0.0-00010101000000-000000000000
 	timers v0.0.0-00010101000000-000000000000

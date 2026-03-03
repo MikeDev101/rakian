@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"lcd"
+	"gfx"
 	"misc"
 )
 
@@ -32,7 +32,7 @@ func (instance *Screensaver) Label() string {
 
 func (instance *Screensaver) render() {
 	display := instance.parent.Display
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	font := display.Use_Font_Large_Bold()
 
 	// Draw something
@@ -56,7 +56,7 @@ func (instance *Screensaver) render() {
 	}
 
 	// Draw clock
-	display.DrawTextAligned(42, 24, font, clock_str, false, lcd.AlignCenter, lcd.AlignCenter)
+	display.DrawTextAligned(42, 24, font, clock_str, false, gfx.AlignCenter, gfx.AlignCenter)
 
 	display.Render()
 }

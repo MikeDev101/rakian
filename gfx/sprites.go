@@ -1,9 +1,8 @@
-package lcd
+package gfx
 
 import (
 	"fmt"
 	"image"
-	"log"
 )
 
 var Sprite_map = map[string]string{
@@ -358,7 +357,7 @@ var Sprite_map = map[string]string{
 	"drawing_8": "0226",
 }
 
-func (d *LCD) load_sprite_elem(elem string) (image.Image, error) {
+func load_sprite_elem(elem string) (*image.Image, error) {
 	relPath, ok := Sprite_map[elem]
 	if !ok {
 		return nil, fmt.Errorf("Elem %s not found in sprites", elem)
@@ -370,32 +369,10 @@ func (d *LCD) load_sprite_elem(elem string) (image.Image, error) {
 	return img, err
 }
 
-func (d *LCD) Use_Sprites() map[string]image.Image {
-	return d.SpriteCache
+func Use_Sprites(d Driver) map[string]*image.Image {
+	return d.GetSpriteCacheAll()
 }
 
-func (d *LCD) Load_Sprites() {
-
-	// Load all sprite elements, or load them from d.SpriteCache
-	cache := make(map[string]image.Image, len(Sprite_map))
-	var i = -1
-	for elem := range Sprite_map {
-		i++
-
-		// Don't re-load the file if already loaded
-		if cached, ok := d.SpriteCache[elem]; ok {
-			cache[elem] = cached
-			continue
-		}
-
-		img, err := d.load_sprite_elem(elem)
-		if err != nil {
-			log.Printf("Sprite load failed for '%s': %v", elem, err)
-			continue
-		}
-		cache[elem] = img
-
-		// Keep loaded in memory
-		d.SpriteCache[elem] = img
-	}
+func Load_Sprites(d Driver) {
+	Load_Sprite_Map(Sprite_map, load_sprite_elem, d)
 }

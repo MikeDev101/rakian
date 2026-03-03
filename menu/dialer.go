@@ -2,12 +2,12 @@ package menu
 
 import (
 	"context"
+	"gfx"
 	"log"
 	"slices"
 	"sync"
 	"time"
 
-	"lcd"
 	"misc"
 	"timers"
 )
@@ -39,11 +39,11 @@ func (instance *DialerMenu) Label() string {
 func (instance *DialerMenu) render() {
 	m := instance.parent
 	display := m.Display
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
-	display.Clear(lcd.White)
+	defer display.Unlock()
+	display.Lock()
+	display.Clear(display.Primary())
 	m.RenderStateCommon()
-	display.DrawTextWrapped(8, 10, 80, 40, display.Use_Font_Large_Bold(), instance.dial_number, false, lcd.WrapRight, lcd.WrapUp)
+	display.DrawTextWrapped(8, 10, 80, 40, display.Use_Font_Large_Bold(), instance.dial_number, false, gfx.WrapRight, gfx.WrapUp)
 	m.RenderFooter("Dial", true)
 	display.Render()
 }

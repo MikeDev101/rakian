@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"lcd"
+	"gfx"
 	"misc"
 	"timers"
 )
@@ -36,30 +36,30 @@ func (instance *HomeMenu) render() {
 	m := instance.parent
 	display := m.Display
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
-	display.Clear(lcd.White)
+	display.Clear(display.Primary())
 	m.RenderStateCommon()
 
 	if m.Phone.OK {
 		if m.Phone.SOS {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "SOS", false, lcd.AlignCenter, lcd.AlignBelow)
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "SOS", false, gfx.AlignCenter, gfx.AlignBelow)
 		} else if m.Phone.FlightMode {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, lcd.AlignCenter, lcd.AlignBelow)
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, gfx.AlignCenter, gfx.AlignBelow)
 		} else {
 			font := display.Use_Font_Small_Bold()
 			if m.Phone.Carrier == "No service" {
 				font = display.Use_Font_Small_Plain()
 			}
-			display.DrawTextAligned(42, 8, font, m.Phone.Carrier, false, lcd.AlignCenter, lcd.AlignBelow)
+			display.DrawTextAligned(42, 8, font, m.Phone.Carrier, false, gfx.AlignCenter, gfx.AlignBelow)
 		}
 
 		if m.Phone.Roaming {
-			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, lcd.AlignCenter, lcd.AlignBelow)
+			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, gfx.AlignCenter, gfx.AlignBelow)
 		}
 	} else {
-		display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Modem error", false, lcd.AlignCenter, lcd.AlignBelow)
+		display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Modem error", false, gfx.AlignCenter, gfx.AlignBelow)
 	}
 
 	if m.Get("KeypadLocked").(bool) {
@@ -99,7 +99,7 @@ func (instance *HomeMenu) Run() {
 				return
 
 			case <-time.After(100 * time.Millisecond):
-				if !instance.parent.Display.IsOn {
+				if !instance.parent.Display.IsOn() {
 					continue
 				}
 				instance.render()

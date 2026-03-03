@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"lcd"
+	"gfx"
 	"misc"
 )
 
@@ -94,7 +94,7 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 		display := m.Display
 		var startY int
 
-		display.Clear(lcd.White)
+		display.Clear(display.Primary())
 
 		if args.ShowTitle {
 			if args.ShowPathInTitle && len(state.path) > 0 {
@@ -110,7 +110,7 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 		current_options := get_current_options()
 
 		if args.SelectorType == SELECTOR_SIMPLE || args.SelectorType == SELECTOR_SIMPLE_WITH_INFO {
-			display.SetColor(lcd.White)
+			display.SetColor(display.Primary())
 			display.SetLineWidth(1)
 			display.DrawLine(0, 33, 127, 33)
 			display.Stroke()
@@ -125,7 +125,7 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 				// Show info text on bottom right
 				if len(state.path) == 0 && state.selection < len(args.Options) && len(args.Options[state.selection]) > 1 {
 					info := args.Options[state.selection][1]
-					display.DrawTextAligned(84, 48, display.Use_Font_Small_Plain(), info, false, lcd.AlignRight, lcd.AlignAbove)
+					display.DrawTextAligned(84, 48, display.Use_Font_Small_Plain(), info, false, gfx.AlignRight, gfx.AlignAbove)
 				}
 			}
 		} else {
@@ -155,7 +155,7 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 				opt := current_options[idx]
 
 				if idx == state.selection {
-					display.SetColor(lcd.Black)
+					display.SetColor(display.Secondary())
 					display.DrawRectangle(0, float64(y), 84, float64(lineHeight))
 					display.Fill()
 					display.DrawText(1, y+1, font, opt, true)

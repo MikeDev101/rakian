@@ -1,12 +1,11 @@
-package lcd
+package gfx
 
 import "time"
 
-// LoadAnimations loads animation sequences for display on the LCD.
-// Animations are stored in the AnimationCache map for later retrieval.
-func (d *LCD) LoadAnimations() {
-
-	d.AnimationCache["boot"] = Animation{
+// LoadAnimations loads animation sequences for display.
+// Animations are stored in the driver's AnimationCache map for later retrieval.
+func LoadAnimations(d Driver) {
+	d.SetAnimationCache("boot", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "boot_0"},
 			{Type: PLAY_FRAME, Image: "boot_1"},
@@ -18,9 +17,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       false,
 		FrameDelay: 250 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["ok"] = Animation{
+	d.SetAnimationCache("ok", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "ok_0"},
 			{Type: PLAY_FRAME, Image: "ok_1"},
@@ -29,9 +28,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       false,
 		FrameDelay: 150 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["keypad_locked"] = Animation{
+	d.SetAnimationCache("keypad_locked", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "keypad_locked_0"},
 			{Type: PLAY_FRAME, Image: "keypad_locked_1"},
@@ -40,9 +39,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       false,
 		FrameDelay: 150 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["keypad_unlocked"] = Animation{
+	d.SetAnimationCache("keypad_unlocked", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "keypad_locked_3"},
 			{Type: PLAY_FRAME, Image: "keypad_locked_2"},
@@ -51,9 +50,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       false,
 		FrameDelay: 150 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["keypad_unlock_info"] = Animation{
+	d.SetAnimationCache("keypad_unlock_info", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "keypad_unlock_0"},
 			{Type: PLAY_FRAME, Image: "keypad_unlock_1"},
@@ -68,9 +67,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 100 * time.Millisecond,
 		LoopDelay:  1 * time.Second,
-	}
+	})
 
-	d.AnimationCache["low_battery"] = Animation{
+	d.SetAnimationCache("low_battery", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "low_battery_0"},
 			{Type: PLAY_FRAME, Image: "low_battery_1"},
@@ -78,9 +77,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 750 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["very_low_battery"] = Animation{
+	d.SetAnimationCache("very_low_battery", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "very_low_battery_0"},
 			{Type: PLAY_FRAME, Image: "very_low_battery_1"},
@@ -92,9 +91,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 		LoopDelay:  250 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["charging"] = Animation{
+	d.SetAnimationCache("charging", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "charging_0"},
 			{Type: PLAY_FRAME, Image: "charging_1"},
@@ -103,9 +102,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 200 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["vmail"] = Animation{
+	d.SetAnimationCache("vmail", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "vmail_0"},
 			{Type: PLAY_FRAME, Image: "vmail_1"},
@@ -115,9 +114,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		LoopDelay:  0 * time.Second,
 		FrameDelay: 330 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["sending"] = Animation{
+	d.SetAnimationCache("sending", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "sending_0"},
 			{Type: PLAY_FRAME, Image: "sending_1"},
@@ -136,9 +135,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       false,
 		FrameDelay: 50 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["phonebook"] = Animation{
+	d.SetAnimationCache("phonebook", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "phonebook_0",
@@ -153,9 +152,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 250 * time.Millisecond,
-	}
+	})
 
-	d.AnimationCache["messages"] = Animation{
+	d.SetAnimationCache("messages", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "messages_0",
@@ -183,8 +182,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 		LoopDelay:  1 * time.Second,
-	}
-	d.AnimationCache["chats"] = Animation{
+	})
+
+	d.SetAnimationCache("chats", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "chats_0",
@@ -206,8 +206,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-	}
-	d.AnimationCache["call_register"] = Animation{
+	})
+
+	d.SetAnimationCache("call_register", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "call_register_0",
@@ -228,8 +229,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-	}
-	d.AnimationCache["settings"] = Animation{
+	})
+
+	d.SetAnimationCache("settings", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "settings_0",
@@ -247,8 +249,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       false,
 		FrameDelay: 150 * time.Millisecond,
-	}
-	d.AnimationCache["call_divert"] = Animation{
+	})
+
+	d.SetAnimationCache("call_divert", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "call_divert_0",
@@ -269,8 +272,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-	}
-	d.AnimationCache["apps"] = Animation{
+	})
+
+	d.SetAnimationCache("apps", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "apps_0"},
 			{Type: PLAY_FRAME, Image: "apps_1"},
@@ -279,8 +283,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-	}
-	d.AnimationCache["calculator"] = Animation{
+	})
+
+	d.SetAnimationCache("calculator", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "calculator_0",
@@ -304,8 +309,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 500 * time.Millisecond,
 		LoopDelay:  1 * time.Second,
-	}
-	d.AnimationCache["clock"] = Animation{
+	})
+
+	d.SetAnimationCache("clock", &Animation{
 		Frames: []Frame{
 			{Type: PLAY_FRAME, Image: "clock_0"},
 			{Type: PLAY_FRAME, Image: "clock_1"},
@@ -318,8 +324,9 @@ func (d *LCD) LoadAnimations() {
 		},
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-	}
-	d.AnimationCache["notes"] = Animation{
+	})
+
+	d.SetAnimationCache("notes", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "notes_0",
@@ -344,8 +351,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 		LoopDelay:  1 * time.Second,
-	}
-	d.AnimationCache["tones"] = Animation{
+	})
+
+	d.SetAnimationCache("tones", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "tones_0",
@@ -373,8 +381,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 		LoopDelay:  1 * time.Second,
-	}
-	d.AnimationCache["sim_tools"] = Animation{
+	})
+
+	d.SetAnimationCache("sim_tools", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "sim_tools_0",
@@ -396,8 +405,9 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 		LoopDelay:  1 * time.Second,
-	}
-	d.AnimationCache["drawing"] = Animation{
+	})
+
+	d.SetAnimationCache("drawing", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
 			Image: "drawing_0",
@@ -417,5 +427,5 @@ func (d *LCD) LoadAnimations() {
 		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 		LoopDelay:  1 * time.Second,
-	}
+	})
 }

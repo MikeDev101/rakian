@@ -46,8 +46,8 @@ func (instance *KeypadUnlockMenu) Run() {
 	m := instance.parent
 	display := m.Display
 
-	defer display.DrawLock.Unlock()
-	display.DrawLock.Lock()
+	defer display.Unlock()
+	display.Lock()
 
 	// Create animation context and play the unlock guide animation
 	animCtx, animCancel := context.WithCancel(instance.ctx)
