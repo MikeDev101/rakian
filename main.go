@@ -32,6 +32,8 @@ import (
 var DEBUG_MODE string = "true"
 var FW_VERSION string = "0.1.20 (3.2.2026)"
 var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
+const WLAN_DEVICE = "wlan0"
+const DB_PATH = "/root/rakian/kvstore.db"
 
 const (
 	EXIT_SHUTDOWN = 1
@@ -117,7 +119,7 @@ func main() {
 			panic(err)
 		}
 
-		if device_interface == "wlan0" {
+		if device_interface == WLAN_DEVICE {
 			wifi_device_raw = device.GetPath()
 			break
 		}
@@ -139,7 +141,7 @@ func main() {
 	}
 
 	// Init db
-	database, err := gorm.Open(sqlite.Open("/root/rakian/kvstore.db"), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(DB_PATH), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
@@ -187,7 +189,8 @@ func main() {
 	// Initialize components
 	player := tones.New()
 	phone := modem.Run(debug, database)
-	rawKeypadEvents := keypad.Run(ctx, debug)
+	hardware_kp := keypad.New_Hardware_Keypad()
+	rawKeypadEvents := hardware_kp.Run(ctx, debug)
 
 	// Initialize keypad and wrap events to detect long-press on power button
 	keypadEvents := make(chan *keypad.KeypadEvent, 10)
@@ -373,7 +376,7 @@ func main() {
 
 				if read_err != nil {
 					menus.Set("BatteryOK", false)
-					continue
+					return
 				}
 
 				charging := misc.GetChargingStatus()
