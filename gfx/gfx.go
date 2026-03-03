@@ -72,6 +72,8 @@ type Driver interface {
 	Off()
 	Render()
 	Clear(color.Color)
+	Stop()
+	Start()
 
 	// Acccessors
 	Width() int
@@ -130,14 +132,16 @@ type Driver interface {
 
 func Load_Font_Map(name string, mapping map[rune]string, mapfunc func(rune) (*image.Image, error), d Driver) {
 
+	elem := d.GetFontCache(name)
+	if elem == nil {
+		elem = make(map[rune]*image.Image)
+	}
+
 	// Load all font runes, or load them from d.FontCache
 	for char := range mapping {
 
 		// Create prefix element if it doesn't exist
-		if elem := d.GetFontCache(name); elem == nil {
-			d.SetFontCache(name, make(map[rune]*image.Image))
-
-		} else if _, ok := elem[char]; ok {
+		if _, ok := elem[char]; ok {
 			// Don't re-load the file if already loaded
 			continue
 

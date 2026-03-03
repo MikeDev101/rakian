@@ -38,7 +38,7 @@ type Menu struct {
 	DebugMode     bool
 
 	Display        gfx.Driver
-	Phone          *modem.Modem
+	Phone          modem.Modem
 	KeypadEvents   <-chan *keypad.KeypadEvent
 	Timers         map[string]*timers.ResettableTimer
 	Player         *tones.Tones
@@ -451,7 +451,7 @@ func Init(
 	ctx context.Context,
 	debug bool,
 	display gfx.Driver,
-	phone *modem.Modem,
+	phone modem.Modem,
 	player *tones.Tones,
 	globalquit func(uint8),
 	keypadevents <-chan *keypad.KeypadEvent,

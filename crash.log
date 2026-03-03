@@ -1,0 +1,35 @@
+2026/03/03 15:01:50 ⚠️ No modems found.
+2026/03/03 15:01:50 📑 Loading persistent key CanVibrate (true)
+2026/03/03 15:01:50 📑 Loading persistent key CanRing (false)
+2026/03/03 15:01:50 📑 Loading persistent key BeepOnly (false)
+2026/03/03 15:01:50 📑 Loading persistent key APN (vzwinternet)
+2026/03/03 15:01:53 Error checking cellular: fork/exec /usr/bin/cellular_toggle: no such file or directory
+2026/03/03 15:01:55 Pushing menu: home
+2026/03/03 15:01:57 ℹ️ Interrupt detected, exiting
+panic: NotInitialized: The GLFW library is not initialized [recovered, repanicked]
+
+goroutine 1 [running, locked to thread]:
+main.exit()
+	/home/mikedev/Documents/GitHub/rakian/exit.go:16 +0xfe
+panic({0xf9d420?, 0x368c46609890?})
+	/home/mikedev/sdk/go1.26.0/src/runtime/panic.go:860 +0x13a
+github.com/go-gl/glfw/v3.3/glfw.acceptError({0x0, 0x0, 0x0?})
+	/home/mikedev/go/pkg/mod/github.com/go-gl/glfw/v3.3/glfw@v0.0.0-20250301202403-da16c1255728/error.go:177 +0x15e
+github.com/go-gl/glfw/v3.3/glfw.panicError(...)
+	/home/mikedev/go/pkg/mod/github.com/go-gl/glfw/v3.3/glfw@v0.0.0-20250301202403-da16c1255728/error.go:188
+github.com/go-gl/glfw/v3.3/glfw.(*Window).SetShouldClose(0x368c44e85d08?, 0x2e?)
+	/home/mikedev/go/pkg/mod/github.com/go-gl/glfw/v3.3/glfw@v0.0.0-20250301202403-da16c1255728/window.go:383 +0xb4
+fyne.io/fyne/v2/internal/driver/glfw.(*window).Close.func1()
+	/home/mikedev/go/pkg/mod/fyne.io/fyne/v2@v2.7.3/internal/driver/glfw/window.go:204 +0x85
+fyne.io/fyne/v2/internal/async.EnsureMain(0x368c45c4eba0)
+	/home/mikedev/go/pkg/mod/fyne.io/fyne/v2@v2.7.3/internal/async/goroutine.go:46 +0x3f
+fyne.io/fyne/v2/internal/driver/glfw.(*window).Close(0x368c450eb6c0)
+	/home/mikedev/go/pkg/mod/fyne.io/fyne/v2@v2.7.3/internal/driver/glfw/window.go:192 +0x4f
+fyne.io/fyne/v2/app.(*fyneApp).Quit(0x368c452cee70)
+	/home/mikedev/go/pkg/mod/fyne.io/fyne/v2@v2.7.3/app/app.go:82 +0x42
+simulator.(*Simulator).Stop(...)
+	/home/mikedev/Documents/GitHub/rakian/simulator/simulator.go:293
+main.main.func1()
+	/home/mikedev/Documents/GitHub/rakian/main.go:72 +0xc5
+main.main()
+	/home/mikedev/Documents/GitHub/rakian/main.go:99 +0x486

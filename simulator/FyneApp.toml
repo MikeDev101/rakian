@@ -1,0 +1,8 @@
+[Details]
+Name = "Rakian Simulator"
+ID = "rakian_sim"
+Version = "0.0.0"
+Build = 0
+
+[Migrations]
+fyneDo = true

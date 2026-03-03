@@ -88,7 +88,7 @@ func (instance *PhoneMenu) Run() {
 		panic("Attempted to call (*PhoneMenu).Run() before (*PhoneMenu).Configure()!")
 	}
 
-	if !m.Phone.OK {
+	if !m.Phone.OK() {
 		panic("Attempted to call (*PhoneMenu).Run() in an illegal state - phone was not ready")
 	}
 
@@ -149,7 +149,7 @@ func (instance *PhoneMenu) Run() {
 
 					case 'S':
 						if !instance.options_active {
-							if m.Phone.OK {
+							if m.Phone.OK() {
 								if err := m.Phone.HangupCall(instance.call); err == nil {
 									go m.ToStart()
 									return
@@ -239,7 +239,7 @@ func (instance *PhoneMenu) Run() {
 					case 'D':
 					default:
 						go m.playDTMF(evt.Key)
-						if m.Phone.OK {
+						if m.Phone.OK() {
 							m.Phone.SendDTMF(instance.call, string(evt.Key))
 						}
 					}

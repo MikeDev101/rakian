@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"tones"
-
-	"github.com/stianeikeland/go-rpio/v4"
 )
 
 func EnablePowerbutton() {
@@ -72,21 +70,21 @@ func SoftReboot() {
 }
 
 func KeyLightsOn() {
-	if err := rpio.Open(); err != nil {
+	/* if err := rpio.Open(); err != nil {
 		panic(err)
 	}
 	p := rpio.Pin(13)
 	p.Output()
-	p.High()
+	p.High() */
 }
 
 func KeyLightsOff() {
-	if err := rpio.Open(); err != nil {
+	/* if err := rpio.Open(); err != nil {
 		panic(err)
 	}
 	p := rpio.Pin(13)
 	p.Output()
-	p.Low()
+	p.Low() */
 }
 
 func SleepWithContext(duration time.Duration, ctx context.Context) {

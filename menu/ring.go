@@ -140,7 +140,7 @@ func (instance *RingMenu) Run() {
 					switch evt.Key {
 					case 'S':
 						go m.PlayKey()
-						if m.Phone.OK {
+						if m.Phone.OK() {
 							res := m.Phone.AnswerCall(instance.call)
 							if res != nil {
 								log.Printf("⚠️ Failed to answer call: %v", res)
@@ -151,7 +151,7 @@ func (instance *RingMenu) Run() {
 						}
 					case 'C':
 						go m.PlayKey()
-						if m.Phone.OK {
+						if m.Phone.OK() {
 							res := m.Phone.HangupCall(instance.call)
 							if res != nil {
 								log.Printf("⚠️ Failed to hang up call: %v", res)

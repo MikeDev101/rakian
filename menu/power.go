@@ -119,9 +119,9 @@ func (instance *PowerMenu) Run() {
 		return
 
 	case "Flight mode":
-		if m.Phone.OK {
+		if m.Phone.OK() {
 			apn := m.Get("APN").(string)
-			if m.Phone.FlightMode {
+			if m.Phone.IsFlightMode() {
 				go m.RenderAnimatedAlert("ok", instance.ctx, []string{"Leaving", "flight", "mode"})
 				go m.PlayAccepted()
 				m.Phone.SetFlightMode(false)

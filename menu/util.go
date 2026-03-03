@@ -159,22 +159,22 @@ func (instance *Menu) RenderStateCommon() {
 		}
 	}
 
-	if m.Phone.OK {
+	if m.Phone.OK() {
 		display.SetColor(display.Secondary())
 		display.SetLineWidth(1)
-		if m.Phone.SignalStrength >= 4 {
+		if m.Phone.GetSignalStrength() >= 4 {
 			display.DrawRectangle(0, 0, 5, 7)
 			display.Fill()
 		}
-		if m.Phone.SignalStrength >= 3 {
+		if m.Phone.GetSignalStrength() >= 3 {
 			display.DrawRectangle(0, 8, 3, 7)
 			display.Fill()
 		}
-		if m.Phone.SignalStrength >= 2 {
+		if m.Phone.GetSignalStrength() >= 2 {
 			display.DrawRectangle(0, 16, 2, 7)
 			display.Fill()
 		}
-		if m.Phone.SignalStrength >= 1 {
+		if m.Phone.GetSignalStrength() >= 1 {
 			display.DrawRectangle(0, 24, 2, 7)
 			display.Fill()
 		}

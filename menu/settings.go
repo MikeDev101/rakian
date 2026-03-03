@@ -391,19 +391,19 @@ func (instance *SettingsMenu) handleToggle(selection_path []string) int {
 		apn, _ := m.Get("APN").(string)
 
 		// Check if there's service
-		if !m.Phone.OK {
+		if !m.Phone.OK() {
 			go misc.SetCellularDataState(apn, false)
 			m.RenderAlert("prohibited", []string{"No", "service"})
 			go m.PlayAlert()
 			time.Sleep(2 * time.Second)
 			goto exit
-		} else if m.Phone.FlightMode {
+		} else if m.Phone.IsFlightMode() {
 			go misc.SetCellularDataState(apn, false)
 			m.RenderAlert("prohibited", []string{"Flight", "mode", "enabled"})
 			go m.PlayAlert()
 			time.Sleep(2 * time.Second)
 			goto exit
-		} else if !m.Phone.Registered {
+		} else if !m.Phone.IsRegistered() {
 			go misc.SetCellularDataState(apn, false)
 			m.RenderAlert("prohibited", []string{"No", "service"})
 			go m.PlayAlert()

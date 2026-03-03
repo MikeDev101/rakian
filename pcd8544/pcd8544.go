@@ -84,6 +84,14 @@ func New(dc, rst rpio.Pin) gfx.Driver {
 	return display
 }
 
+// Dummy functions
+func (*PCD8544) Start() {
+	for {
+	}
+}
+
+func (*PCD8544) Stop() {}
+
 // Locks
 func (d *PCD8544) Lock()         { d.draw_lock.Lock() }
 func (d *PCD8544) Unlock()       { d.draw_lock.Unlock() }

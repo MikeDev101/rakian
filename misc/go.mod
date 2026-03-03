@@ -7,10 +7,7 @@ replace (
 	tones => ../tones
 )
 
-require (
-	github.com/stianeikeland/go-rpio/v4 v4.6.0
-	tones v0.0.0-00010101000000-000000000000
-)
+require tones v0.0.0-00010101000000-000000000000
 
 require (
 	github.com/ebitengine/oto/v3 v3.4.0 // indirect

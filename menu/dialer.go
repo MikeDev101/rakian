@@ -144,23 +144,23 @@ func (instance *DialerMenu) Run() {
 						continue
 					}
 
-					if !m.Phone.OK {
+					if !m.Phone.OK() {
 						instance.ExitWithAlert([]string{"No", "service"})
 						return
 					}
 
-					if m.Phone.FlightMode {
+					if m.Phone.IsFlightMode() {
 						instance.ExitWithAlert([]string{"Flight", "mode", "enabled"})
 						return
 					}
 
-					if !m.Phone.Registered {
+					if !m.Phone.IsRegistered() {
 						instance.ExitWithAlert([]string{"No", "service"})
 						return
 					}
 
 					// Ignore registration if the number is in the service/emergency numbers list
-					if slices.Contains(m.Phone.EmergencyNumbers, instance.dial_number) {
+					if slices.Contains(m.Phone.GetEmergencyNumbers(), instance.dial_number) {
 						m.RenderAlert("", []string{"Attempting", "emergency", "call"})
 						go m.PlayAlert()
 
@@ -179,7 +179,7 @@ func (instance *DialerMenu) Run() {
 						return
 					}
 
-					if !m.Phone.Registered {
+					if !m.Phone.IsRegistered() {
 						instance.ExitWithAlert([]string{"No", "service!"})
 						return
 					}

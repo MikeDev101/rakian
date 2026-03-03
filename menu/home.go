@@ -42,20 +42,20 @@ func (instance *HomeMenu) render() {
 	display.Clear(display.Primary())
 	m.RenderStateCommon()
 
-	if m.Phone.OK {
-		if m.Phone.SOS {
+	if m.Phone.OK() {
+		if m.Phone.IsSOS() {
 			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "SOS", false, gfx.AlignCenter, gfx.AlignBelow)
-		} else if m.Phone.FlightMode {
+		} else if m.Phone.IsFlightMode() {
 			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, gfx.AlignCenter, gfx.AlignBelow)
 		} else {
 			font := display.Use_Font_Small_Bold()
-			if m.Phone.Carrier == "No service" {
+			if m.Phone.GetCarrier() == "No service" {
 				font = display.Use_Font_Small_Plain()
 			}
-			display.DrawTextAligned(42, 8, font, m.Phone.Carrier, false, gfx.AlignCenter, gfx.AlignBelow)
+			display.DrawTextAligned(42, 8, font, m.Phone.GetCarrier(), false, gfx.AlignCenter, gfx.AlignBelow)
 		}
 
-		if m.Phone.Roaming {
+		if m.Phone.IsRoaming() {
 			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, gfx.AlignCenter, gfx.AlignBelow)
 		}
 	} else {
