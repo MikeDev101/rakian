@@ -5,6 +5,7 @@ go 1.26.0
 replace (
 	db => ./db
 	gfx => ./gfx
+	hardware_keypad => ./hardware_keypad
 	keypad => ./keypad
 	menu => ./menu
 	misc => ./misc
@@ -24,6 +25,7 @@ require (
 	github.com/stianeikeland/go-rpio/v4 v4.6.0
 	golang.org/x/sys v0.36.0
 	gorm.io/gorm v1.31.1
+	hardware_keypad v0.0.0-00010101000000-000000000000
 	keypad v0.0.0-00010101000000-000000000000
 	menu v0.0.0-00010101000000-000000000000
 	misc v0.0.0-00010101000000-000000000000

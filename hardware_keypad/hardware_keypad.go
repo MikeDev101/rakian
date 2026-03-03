@@ -1,7 +1,8 @@
-package keypad
+package hardware_keypad
 
 import (
 	"context"
+	"keypad"
 	"log"
 	"time"
 	"timers"
@@ -26,7 +27,7 @@ type Hardware_Keypad struct {
 	KeyMap map[[2]int]rune
 }
 
-func New_Hardware_Keypad() Keypad {
+func New() keypad.Keypad {
 
 	// Must be first
 	if err := rpio.Open(); err != nil {
@@ -53,7 +54,7 @@ func New_Hardware_Keypad() Keypad {
 		Rows:   rowPins,
 		Cols:   colPins,
 		Power:  &PinIn{"GPIO3", rpio.Pin(3)},
-		KeyMap: KeyMap,
+		KeyMap: keypad.KeyMap,
 	}
 
 	return kp
@@ -83,8 +84,8 @@ func debounceRead(ctx context.Context, pin *PinIn, state rpio.State, duration ti
 	return true
 }
 
-func (k *Hardware_Keypad) Run(ctx context.Context, debug bool) <-chan *KeypadEvent {
-	eventsChan := make(chan *KeypadEvent, 10)
+func (k *Hardware_Keypad) Run(ctx context.Context, debug bool) <-chan *keypad.KeypadEvent {
+	eventsChan := make(chan *keypad.KeypadEvent, 10)
 
 	for _, pin := range k.Rows {
 		pin.Input()
@@ -119,7 +120,7 @@ func (k *Hardware_Keypad) Run(ctx context.Context, debug bool) <-chan *KeypadEve
 				// Scan power button
 				if k.Power != nil {
 					if debounceRead(ctx, k.Power, rpio.Low, 25*time.Millisecond) {
-						eventsChan <- &KeypadEvent{
+						eventsChan <- &keypad.KeypadEvent{
 							State:    true,
 							Key:      'P',
 							Duration: 0,
@@ -133,7 +134,7 @@ func (k *Hardware_Keypad) Run(ctx context.Context, debug bool) <-chan *KeypadEve
 								return
 							default:
 								if debounceRead(ctx, k.Power, rpio.High, 50*time.Millisecond) {
-									eventsChan <- &KeypadEvent{
+									eventsChan <- &keypad.KeypadEvent{
 										State:    false,
 										Key:      'P',
 										Duration: time.Since(start).Seconds(),
@@ -184,7 +185,7 @@ func (k *Hardware_Keypad) Run(ctx context.Context, debug bool) <-chan *KeypadEve
 											log.Printf("⌨️  Keypress detected on pins %s %s (%d:%d - %c)", rowPin.Label, colPin.Label, rowIdx, colIdx, lastRune)
 										}
 
-										eventsChan <- &KeypadEvent{
+										eventsChan <- &keypad.KeypadEvent{
 											State:    true,
 											Key:      lastRune,
 											Duration: 0,
@@ -223,7 +224,7 @@ func (k *Hardware_Keypad) Run(ctx context.Context, debug bool) <-chan *KeypadEve
 					}
 					lastRow = nil
 					lastCol = nil
-					eventsChan <- &KeypadEvent{
+					eventsChan <- &keypad.KeypadEvent{
 						State:    false,
 						Key:      lastRune,
 						Duration: duration.Seconds(),

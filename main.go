@@ -2,38 +2,37 @@ package main
 
 import (
 	"context"
-	"gfx"
 	"log"
 	"os"
 	"os/signal"
-	"pcd8544"
 	"syscall"
 	"time"
 
 	"db"
+	"gfx"
+	"hardware_keypad"
 	"keypad"
 	"menu"
 	"misc"
 	"modem"
-
-	"github.com/stianeikeland/go-rpio/v4"
-	"golang.org/x/sys/unix"
-
+	"pcd8544"
 	"timers"
 	"tones"
 
 	"github.com/Wifx/gonetworkmanager/v3"
 	"github.com/glebarez/sqlite"
 	"github.com/godbus/dbus/v5"
+	"github.com/stianeikeland/go-rpio/v4"
+	"golang.org/x/sys/unix"
 	"gorm.io/gorm"
 )
 
 // go build -ldflags "-X 'main.DEBUG_MODE=false'" .
 var DEBUG_MODE string = "true"
 var FW_VERSION string = "0.1.20 (3.2.2026)"
-var EXIT_MODE uint8 = 0 // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
-const WLAN_DEVICE = "wlan0"
-const DB_PATH = "/root/rakian/kvstore.db"
+var EXIT_MODE uint8 = 0        // 0 - none, 1 - shutdown, 2 - reboot, 3 - soft restart
+const WLAN_DEVICE = "wlp2s0"   // wlan0
+const DB_PATH = "./kvstore.db" // "/root/rakian/kvstore.db"
 
 const (
 	EXIT_SHUTDOWN = 1
@@ -189,7 +188,7 @@ func main() {
 	// Initialize components
 	player := tones.New()
 	phone := modem.Run(debug, database)
-	hardware_kp := keypad.New_Hardware_Keypad()
+	hardware_kp := hardware_keypad.New()
 	rawKeypadEvents := hardware_kp.Run(ctx, debug)
 
 	// Initialize keypad and wrap events to detect long-press on power button
