@@ -74,6 +74,8 @@ type Driver interface {
 	Clear(color.Color)
 
 	// Acccessors
+	Width() int
+	Height() int
 	Context() *gg.Context
 	IsOn() bool
 	GetAnimationCache(string) *Animation

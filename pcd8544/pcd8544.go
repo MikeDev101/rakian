@@ -95,6 +95,8 @@ func (d *PCD8544) SetSpriteCache(name string, img *image.Image)       { d.sprite
 func (d *PCD8544) SetFontCache(name string, f map[rune]*image.Image)  { d.font_cache[name] = f }
 
 // Getters
+func (d *PCD8544) Width() int                                     { return d.width }
+func (d *PCD8544) Height() int                                    { return d.height }
 func (*PCD8544) Primary() color.Color                             { return White }
 func (*PCD8544) Secondary() color.Color                           { return Black }
 func (d *PCD8544) GetAnimationCache(name string) *gfx.Animation   { return d.animation_cache[name] }
