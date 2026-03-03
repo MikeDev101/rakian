@@ -1,4 +1,4 @@
-package lcd
+package pcd8544
 
 import (
 	"context"
@@ -36,7 +36,7 @@ const (
 	SETVOP   = 0x80
 )
 
-type LCD struct {
+type PCD8544 struct {
 	sprite_cache    map[string]*image.Image
 	font_cache      map[string]map[rune]*image.Image
 	animation_cache map[string]*gfx.Animation
@@ -61,7 +61,7 @@ func New(dc, rst rpio.Pin) gfx.Driver {
 	rpio.SpiSpeed(4000000)
 	rpio.SpiChipSelect(0)
 
-	display := &LCD{
+	display := &PCD8544{
 		ctx:             gg.NewContextForImage(image.NewGray(image.Rect(0, 0, 84, 48))),
 		animation_cache: make(map[string]*gfx.Animation),
 		sprite_cache:    make(map[string]*image.Image),
@@ -85,91 +85,91 @@ func New(dc, rst rpio.Pin) gfx.Driver {
 }
 
 // Locks
-func (d *LCD) Lock()         { d.draw_lock.Lock() }
-func (d *LCD) Unlock()       { d.draw_lock.Unlock() }
-func (d *LCD) TryLock() bool { return d.draw_lock.TryLock() }
+func (d *PCD8544) Lock()         { d.draw_lock.Lock() }
+func (d *PCD8544) Unlock()       { d.draw_lock.Unlock() }
+func (d *PCD8544) TryLock() bool { return d.draw_lock.TryLock() }
 
 // Setters
-func (d *LCD) SetAnimationCache(name string, anim *gfx.Animation) { d.animation_cache[name] = anim }
-func (d *LCD) SetSpriteCache(name string, img *image.Image)       { d.sprite_cache[name] = img }
-func (d *LCD) SetFontCache(name string, f map[rune]*image.Image)  { d.font_cache[name] = f }
+func (d *PCD8544) SetAnimationCache(name string, anim *gfx.Animation) { d.animation_cache[name] = anim }
+func (d *PCD8544) SetSpriteCache(name string, img *image.Image)       { d.sprite_cache[name] = img }
+func (d *PCD8544) SetFontCache(name string, f map[rune]*image.Image)  { d.font_cache[name] = f }
 
 // Getters
-func (*LCD) Primary() color.Color                             { return White }
-func (*LCD) Secondary() color.Color                           { return Black }
-func (d *LCD) GetAnimationCache(name string) *gfx.Animation   { return d.animation_cache[name] }
-func (d *LCD) GetSpriteCacheAll() map[string]*image.Image     { return d.sprite_cache }
-func (d *LCD) GetSpriteCache(name string) *image.Image        { return d.sprite_cache[name] }
-func (d *LCD) GetFontCache(name string) map[rune]*image.Image { return d.font_cache[name] }
-func (d *LCD) Context() *gg.Context                           { return d.ctx }
-func (d *LCD) IsOn() bool                                     { return d.is_on }
+func (*PCD8544) Primary() color.Color                             { return White }
+func (*PCD8544) Secondary() color.Color                           { return Black }
+func (d *PCD8544) GetAnimationCache(name string) *gfx.Animation   { return d.animation_cache[name] }
+func (d *PCD8544) GetSpriteCacheAll() map[string]*image.Image     { return d.sprite_cache }
+func (d *PCD8544) GetSpriteCache(name string) *image.Image        { return d.sprite_cache[name] }
+func (d *PCD8544) GetFontCache(name string) map[rune]*image.Image { return d.font_cache[name] }
+func (d *PCD8544) Context() *gg.Context                           { return d.ctx }
+func (d *PCD8544) IsOn() bool                                     { return d.is_on }
 
 // Compatibility loaders
-func (d *LCD) Load_Font_Tiny()        { gfx.Load_Font_Tiny(d) }
-func (d *LCD) Load_Font_Small_Bold()  { gfx.Load_Font_Small_Bold(d) }
-func (d *LCD) Load_Font_Small_Plain() { gfx.Load_Font_Small_Plain(d) }
-func (d *LCD) Load_Font_Large_Bold()  { gfx.Load_Font_Large_Bold(d) }
-func (d *LCD) Load_Sprites()          { gfx.Load_Sprites(d) }
-func (d *LCD) Load_Animations()       { gfx.LoadAnimations(d) }
+func (d *PCD8544) Load_Font_Tiny()        { gfx.Load_Font_Tiny(d) }
+func (d *PCD8544) Load_Font_Small_Bold()  { gfx.Load_Font_Small_Bold(d) }
+func (d *PCD8544) Load_Font_Small_Plain() { gfx.Load_Font_Small_Plain(d) }
+func (d *PCD8544) Load_Font_Large_Bold()  { gfx.Load_Font_Large_Bold(d) }
+func (d *PCD8544) Load_Sprites()          { gfx.Load_Sprites(d) }
+func (d *PCD8544) Load_Animations()       { gfx.LoadAnimations(d) }
 
 // Compatibility readers
-func (d *LCD) Use_Font_Small_Bold() map[rune]*image.Image  { return gfx.Use_Font_Small_Bold(d) }
-func (d *LCD) Use_Font_Small_Plain() map[rune]*image.Image { return gfx.Use_Font_Small_Plain(d) }
-func (d *LCD) Use_Font_Large_Bold() map[rune]*image.Image  { return gfx.Use_Font_Large_Bold(d) }
-func (d *LCD) Use_Font_Tiny() map[rune]*image.Image        { return gfx.Use_Font_Tiny(d) }
-func (d *LCD) Use_Sprites() map[string]*image.Image        { return gfx.Use_Sprites(d) }
+func (d *PCD8544) Use_Font_Small_Bold() map[rune]*image.Image  { return gfx.Use_Font_Small_Bold(d) }
+func (d *PCD8544) Use_Font_Small_Plain() map[rune]*image.Image { return gfx.Use_Font_Small_Plain(d) }
+func (d *PCD8544) Use_Font_Large_Bold() map[rune]*image.Image  { return gfx.Use_Font_Large_Bold(d) }
+func (d *PCD8544) Use_Font_Tiny() map[rune]*image.Image        { return gfx.Use_Font_Tiny(d) }
+func (d *PCD8544) Use_Sprites() map[string]*image.Image        { return gfx.Use_Sprites(d) }
 
 // GG context
-func (d *LCD) Stroke()                          { d.ctx.Stroke() }
-func (d *LCD) Fill()                            { d.ctx.Fill() }
-func (d *LCD) SetColor(c color.Color)           { d.ctx.SetColor(c) }
-func (d *LCD) SetLineWidth(w float64)           { d.ctx.SetLineWidth(w) }
-func (d *LCD) DrawLine(x1, y1, x2, y2 float64)  { d.ctx.DrawLine(x1, y1, x2, y2) }
-func (d *LCD) DrawRectangle(x, y, w, h float64) { d.ctx.DrawRectangle(x, y, w, h) }
+func (d *PCD8544) Stroke()                          { d.ctx.Stroke() }
+func (d *PCD8544) Fill()                            { d.ctx.Fill() }
+func (d *PCD8544) SetColor(c color.Color)           { d.ctx.SetColor(c) }
+func (d *PCD8544) SetLineWidth(w float64)           { d.ctx.SetLineWidth(w) }
+func (d *PCD8544) DrawLine(x1, y1, x2, y2 float64)  { d.ctx.DrawLine(x1, y1, x2, y2) }
+func (d *PCD8544) DrawRectangle(x, y, w, h float64) { d.ctx.DrawRectangle(x, y, w, h) }
 
 // Graphics
-func (d *LCD) InvertImage(img *image.Image) *image.Image { return gfx.InvertImage(img) }
-func (d *LCD) FlipImage(img *image.Image, mode gfx.RenderType) *image.Image {
+func (d *PCD8544) InvertImage(img *image.Image) *image.Image { return gfx.InvertImage(img) }
+func (d *PCD8544) FlipImage(img *image.Image, mode gfx.RenderType) *image.Image {
 	return gfx.FlipImage(img, mode)
 }
-func (d *LCD) DrawImage(img *image.Image, x, y int) { d.ctx.DrawImage(*img, x, y) }
-func (d *LCD) PlayAnimation(ctx context.Context, name string, x, y int, align_x, align_y gfx.RenderType) {
+func (d *PCD8544) DrawImage(img *image.Image, x, y int) { d.ctx.DrawImage(*img, x, y) }
+func (d *PCD8544) PlayAnimation(ctx context.Context, name string, x, y int, align_x, align_y gfx.RenderType) {
 	gfx.PlayAnimation(d, ctx, name, x, y, align_x, align_y)
 }
 
 // Text
-func (d *LCD) DrawImageAligned(img *image.Image, x, y int, h_align, v_align gfx.RenderType) {
+func (d *PCD8544) DrawImageAligned(img *image.Image, x, y int, h_align, v_align gfx.RenderType) {
 	gfx.DrawImageAligned(d, *img, x, y, h_align, v_align)
 }
-func (d *LCD) DrawText(x, y int, f map[rune]*image.Image, s string, invert bool) {
+func (d *PCD8544) DrawText(x, y int, f map[rune]*image.Image, s string, invert bool) {
 	gfx.DrawText(d, x, y, f, s, invert)
 }
-func (d *LCD) DrawTextAligned(x, y int, f map[rune]*image.Image, s string, invert bool, h_align, v_align gfx.RenderType) {
+func (d *PCD8544) DrawTextAligned(x, y int, f map[rune]*image.Image, s string, invert bool, h_align, v_align gfx.RenderType) {
 	gfx.DrawTextAligned(d, x, y, f, s, invert, h_align, v_align)
 }
-func (d *LCD) DrawTextWrapped(x1, y1, x2, y2 int, f map[rune]*image.Image, s string, invert bool, h_align, v_align gfx.RenderType) {
+func (d *PCD8544) DrawTextWrapped(x1, y1, x2, y2 int, f map[rune]*image.Image, s string, invert bool, h_align, v_align gfx.RenderType) {
 	gfx.DrawTextWrapped(d, x1, y1, x2, y2, f, s, invert, h_align, v_align)
 }
-func (*LCD) GetTextBounds(f map[rune]*image.Image, s string) (int, int) {
+func (*PCD8544) GetTextBounds(f map[rune]*image.Image, s string) (int, int) {
 	return gfx.GetTextBounds(f, s)
 }
 
 // SPI functions
-func (d *LCD) writeCommand(cmd byte) {
+func (d *PCD8544) writeCommand(cmd byte) {
 	d.spi_lock.Lock()
 	defer d.spi_lock.Unlock()
 	d.dc.Low() // Low for commands
 	rpio.SpiTransmit(cmd)
 }
 
-func (d *LCD) writeData(data []byte) {
+func (d *PCD8544) writeData(data []byte) {
 	d.spi_lock.Lock()
 	defer d.spi_lock.Unlock()
 	d.dc.High() // High for data
 	rpio.SpiTransmit(data...)
 }
 
-func (d *LCD) init() {
+func (d *PCD8544) init() {
 	// Hardware reset
 	d.rst.Low()
 	time.Sleep(10 * time.Millisecond) // Give it enough time
@@ -186,27 +186,27 @@ func (d *LCD) init() {
 	d.is_on = true
 }
 
-func (d *LCD) On() {
+func (d *PCD8544) On() {
 	d.writeCommand(0x20)
 	d.writeCommand(0x0C)
 	d.is_on = true
 }
 
-func (d *LCD) Off() {
+func (d *PCD8544) Off() {
 	d.writeCommand(0x20)
 	d.writeCommand(0x08) // Display blank
 	d.is_on = false
 }
 
 // Clears the gg.Context buffer and fills it with state color
-func (d *LCD) Clear(state color.Color) {
+func (d *PCD8544) Clear(state color.Color) {
 	d.ctx.SetColor(state)
 	d.ctx.DrawRectangle(0, 0, float64(d.width), float64(d.height))
 	d.ctx.Fill()
 }
 
 // Sends the gg.Context buffer to the screen
-func (d *LCD) Render() {
+func (d *PCD8544) Render() {
 	d.render_lock.Lock()
 	defer d.render_lock.Unlock()
 
@@ -220,7 +220,7 @@ func (d *LCD) Render() {
 }
 
 // Converts the 2D image buffer into the 1D page-addressed format for LCD
-func (d *LCD) to_bytes() []byte {
+func (d *PCD8544) to_bytes() []byte {
 	bounds := d.ctx.Image().Bounds()
 	raw := make([]byte, d.width*(d.height/8))
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {

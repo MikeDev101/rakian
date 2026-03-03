@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"gfx"
-	"lcd"
 	"log"
 	"os"
 	"os/signal"
+	"pcd8544"
 	"syscall"
 	"time"
 
@@ -160,7 +160,7 @@ func main() {
 	rst := rpio.Pin(7)
 
 	// Initialize the display
-	display := lcd.New(dc, rst)
+	display := pcd8544.New(dc, rst)
 	defer rpio.SpiEnd(rpio.Spi0)
 
 	lcd_powerdown := func() {

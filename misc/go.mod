@@ -3,7 +3,7 @@ module misc
 go 1.26.0
 
 replace (
-	lcd => ../lcd
+	pcd8544 => ../pcd8544
 	tones => ../tones
 )
 

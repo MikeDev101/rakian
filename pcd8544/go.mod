@@ -1,4 +1,4 @@
-module lcd
+module pcd8544
 
 go 1.26.0
 

@@ -6,10 +6,10 @@ replace (
 	db => ./db
 	gfx => ./gfx
 	keypad => ./keypad
-	lcd => ./lcd
 	menu => ./menu
 	misc => ./misc
 	modem => ./modem
+	pcd8544 => ./pcd8544
 	serial_audio => ./modem/serial_audio
 	timers => ./timers
 	tones => ./tones
@@ -25,10 +25,10 @@ require (
 	golang.org/x/sys v0.36.0
 	gorm.io/gorm v1.31.1
 	keypad v0.0.0-00010101000000-000000000000
-	lcd v0.0.0-00010101000000-000000000000
 	menu v0.0.0-00010101000000-000000000000
 	misc v0.0.0-00010101000000-000000000000
 	modem v0.0.0-00010101000000-000000000000
+	pcd8544 v0.0.0-00010101000000-000000000000
 	timers v0.0.0-00010101000000-000000000000
 	tones v0.0.0-00010101000000-000000000000
 )

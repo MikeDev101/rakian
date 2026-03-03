@@ -6,10 +6,10 @@ replace (
 	db => ../db
 	gfx => ../gfx
 	keypad => ../keypad
-	lcd => ../lcd
 	menu => ../menu
 	misc => ../misc
 	modem => ../modem
+	pcd8544 => ../pcd8544
 	serial_audio => ../modem/serial_audio
 	timers => ../timers
 	tones => ../tones
