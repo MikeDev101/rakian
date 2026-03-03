@@ -8,13 +8,11 @@ import (
 	"syscall"
 
 	// "hardware_keypad"
-
-	"misc"
-	"sim7600x"
-	"simulator"
-
+	// "sim7600x"
 	// "pcd8544"
 
+	"misc"
+	"simulator"
 	"tones"
 
 	"golang.org/x/sys/unix"
@@ -65,6 +63,7 @@ func main() {
 	vio := simulator.New()
 	display := vio.Display()
 	keypad := vio.Keypad()
+	phone := vio.Phone()
 
 	lcd_powerdown := func() {
 		display.Clear(display.Primary())
@@ -90,8 +89,12 @@ func main() {
 
 	// Initialize components
 	player := tones.New()
-	phone := sim7600x.New(debug, database)
+
+	// Uncomment to use real interfaces
+	// phone := sim7600x.New(debug, database)
 	// hardware_kp := hardware_keypad.New()
+	// rawKeypadEvents := hardware_kp.Run(ctx, debug)
+
 	rawKeypadEvents := vio.Run(ctx, debug)
 
 	// Run main thread

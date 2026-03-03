@@ -30,7 +30,6 @@ require (
 	menu v0.0.0-00010101000000-000000000000
 	misc v0.0.0-00010101000000-000000000000
 	modem v0.0.0-00010101000000-000000000000
-	sim7600x v0.0.0-00010101000000-000000000000
 	simulator v0.0.0-00010101000000-000000000000
 	timers v0.0.0-00010101000000-000000000000
 	tones v0.0.0-00010101000000-000000000000
@@ -40,7 +39,6 @@ require (
 	fyne.io/fyne/v2 v2.7.3 // indirect
 	fyne.io/systray v1.12.0 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/creack/goselect v0.1.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/oto/v3 v3.4.0 // indirect
@@ -69,7 +67,6 @@ require (
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
 	github.com/maltegrosse/go-modemmanager v0.1.4 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
-	github.com/mesilliac/pulse-simple v0.0.0-20170506101341-75ac54e19fdf // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.6.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -85,7 +82,6 @@ require (
 	github.com/tinygo-org/cbgo v0.0.4 // indirect
 	github.com/tinygo-org/pio v0.2.0 // indirect
 	github.com/yuin/goldmark v1.7.16 // indirect
-	go.bug.st/serial v1.6.4 // indirect
 	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d // indirect
 	golang.org/x/image v0.36.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
@@ -95,6 +91,5 @@ require (
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
 	modernc.org/sqlite v1.23.1 // indirect
-	serial_audio v0.0.0-00010101000000-000000000000 // indirect
 	tinygo.org/x/bluetooth v0.14.0 // indirect
 )
