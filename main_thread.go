@@ -22,6 +22,7 @@ func main_thread(
 	sigs <-chan os.Signal,
 	database *gorm.DB,
 	debug bool,
+	kp keypad.Keypad,
 	rawKeypadEvents <-chan *keypad.KeypadEvent,
 	display gfx.Driver, phone modem.Modem,
 	player *tones.Tones,
@@ -76,7 +77,7 @@ func main_thread(
 	}
 
 	display.On()
-	misc.KeyLightsOn()
+	kp.KeyLightsOn()
 
 	// Load sprites
 	display.Load_Sprites()
@@ -92,6 +93,7 @@ func main_thread(
 		phone,
 		player,
 		global_quit,
+		kp,
 		keypadEvents,
 		database,
 		nm,
@@ -203,7 +205,7 @@ func main_thread(
 
 				case call := <-phone.Ringing():
 					go menus.ToMenuWithArgs("ring", call)
-					misc.KeyLightsOn()
+					kp.KeyLightsOn()
 					menus.Timers["keypad"].Restart()
 					menus.Timers["screensaver"].Restart()
 				}
@@ -322,7 +324,7 @@ func main_thread(
 		menus.Push("screensaver")
 	})
 	menus.Timers["keypad"] = timers.New(ctx, 10*time.Second, false, func() {
-		misc.KeyLightsOff()
+		kp.KeyLightsOff()
 	})
 
 	// Run home menu
@@ -337,30 +339,30 @@ func main_thread(
 
 			case <-BatteryChargedChan:
 				go menus.ToMenu("battery_charged")
-				misc.KeyLightsOn()
+				kp.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
 				menus.Timers["screensaver"].Restart()
 
 			case <-BatteryChargingChan:
 				go menus.ToMenu("battery_charging")
-				misc.KeyLightsOn()
+				kp.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
 				menus.Timers["screensaver"].Restart()
 
 			case <-VeryLowBattChan:
 				go menus.ToMenu("very_low_battery")
-				misc.KeyLightsOn()
+				kp.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
 				menus.Timers["screensaver"].Restart()
 
 			case <-LowBattChan:
 				go menus.ToMenu("low_battery")
-				misc.KeyLightsOn()
+				kp.KeyLightsOn()
 				menus.Timers["keypad"].Restart()
 				menus.Timers["screensaver"].Restart()
 
 			case <-DeadBattChan:
-				misc.KeyLightsOn()
+				kp.KeyLightsOn()
 				menus.Timers["keypad"].Stop()
 				menus.Timers["screensaver"].Stop()
 				go menus.ToMenu("dead_battery")
@@ -389,7 +391,7 @@ func main_thread(
 	display.DrawImage(logo, 20, 70)
 	display.Render()
 	display.On()
-	misc.KeyLightsOn()
+	kp.KeyLightsOn()
 	time.Sleep(500 * time.Millisecond)
 	player.Stop()
 	if debug {

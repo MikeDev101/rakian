@@ -64,6 +64,7 @@ func main() {
 	// Initialize software interfaces
 	vio := simulator.New()
 	display := vio.Display()
+	keypad := vio.Keypad()
 
 	lcd_powerdown := func() {
 		display.Clear(display.Primary())
@@ -94,6 +95,6 @@ func main() {
 	rawKeypadEvents := vio.Run(ctx, debug)
 
 	// Run main thread
-	go main_thread(ctx, sigs, database, debug, rawKeypadEvents, display, phone, player, global_quit, nm, wifi_device)
+	go main_thread(ctx, sigs, database, debug, keypad, rawKeypadEvents, display, phone, player, global_quit, nm, wifi_device)
 	display.Start()
 }

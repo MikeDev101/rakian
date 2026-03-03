@@ -195,11 +195,17 @@ func mapKey(name fyne.KeyName) rune {
 	return 0
 }
 
-// gfx.Driver implementation
 func (v *Simulator) Display() gfx.Driver {
 	var display gfx.Driver = v
 	return display
 }
+
+func (v *Simulator) Keypad() keypad.Keypad {
+	var kp keypad.Keypad = v
+	return kp
+}
+
+// gfx.Driver implementation
 func (v *Simulator) On()                    { v.isOn = true }
 func (v *Simulator) Off()                   { v.isOn = false }
 func (v *Simulator) IsOn() bool             { return v.isOn }
@@ -284,6 +290,9 @@ func (v *Simulator) GetTextBounds(f map[rune]*image.Image, s string) (int, int) 
 func (v *Simulator) Run(ctx context.Context, debug bool) <-chan *keypad.KeypadEvent {
 	return v.keyEvents
 }
+
+func (v *Simulator) KeyLightsOff() {}
+func (v *Simulator) KeyLightsOn()  {}
 
 func (v *Simulator) Start() {
 	v.window.ShowAndRun()

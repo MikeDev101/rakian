@@ -39,6 +39,7 @@ type Menu struct {
 
 	Display        gfx.Driver
 	Phone          modem.Modem
+	Keypad         keypad.Keypad
 	KeypadEvents   <-chan *keypad.KeypadEvent
 	Timers         map[string]*timers.ResettableTimer
 	Player         *tones.Tones
@@ -454,6 +455,7 @@ func Init(
 	phone modem.Modem,
 	player *tones.Tones,
 	globalquit func(uint8),
+	keypad keypad.Keypad,
 	keypadevents <-chan *keypad.KeypadEvent,
 	persist *gorm.DB,
 	nm gonetworkmanager.NetworkManager,
@@ -467,6 +469,7 @@ func Init(
 		GlobalCancel:   menu_cancel,
 		Display:        display,
 		Phone:          phone,
+		Keypad:         keypad,
 		KeypadEvents:   keypadevents,
 		Timers:         make(map[string]*timers.ResettableTimer),
 		Player:         player,

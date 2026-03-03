@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"gfx"
-	"misc"
 	"timers"
 )
 
@@ -127,7 +126,7 @@ func (instance *HomeMenu) Run() {
 					instance.parent.Timers["keypad"].Reset()
 					instance.parent.Timers["screensaver"].Reset()
 					instance.parent.Display.On()
-					misc.KeyLightsOn()
+					instance.parent.Keypad.KeyLightsOn()
 
 					switch evt.Key {
 

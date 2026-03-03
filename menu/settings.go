@@ -211,26 +211,27 @@ func (instance *SettingsMenu) SettingsMain(selection_path []string) int {
 }
 
 func (instance *SettingsMenu) handleAbout() int {
+	m := instance.parent
 	log.Println("⚙️ Showing About screen...")
 	instance.RenderAbout()
 	for {
 		select {
 		case <-instance.ctx.Done():
 			return SettingsActionSubmenuPushed
-		case evt := <-instance.parent.KeypadEvents:
+		case evt := <-m.KeypadEvents:
 			if !evt.State {
 				continue
 			}
 
-			instance.parent.Timers["keypad"].Reset()
-			instance.parent.Timers["screensaver"].Reset()
-			instance.parent.Display.On()
-			misc.KeyLightsOn()
-			go instance.parent.PlayKey()
+			m.Timers["keypad"].Reset()
+			m.Timers["screensaver"].Reset()
+			m.Display.On()
+			m.Keypad.KeyLightsOn()
+			go m.PlayKey()
 
 			switch evt.Key {
 			case 'P':
-				go instance.parent.Push("power")
+				go m.Push("power")
 				return SettingsActionSubmenuPushed
 			case 'S', 'C':
 				return SettingsActionShowSelector
@@ -240,6 +241,7 @@ func (instance *SettingsMenu) handleAbout() int {
 }
 
 func (instance *SettingsMenu) handleInternetStatus() int {
+	m := instance.parent
 	log.Println("⚙️ Showing internet status screen...")
 	instance.RenderInternetStatus(instance.GetNetworkState(), instance.GetNetworkInfo())
 	for {
@@ -248,20 +250,20 @@ func (instance *SettingsMenu) handleInternetStatus() int {
 			return SettingsActionSubmenuPushed
 		case <-time.After(500 * time.Millisecond):
 			instance.RenderInternetStatus(instance.GetNetworkState(), instance.GetNetworkInfo())
-		case evt := <-instance.parent.KeypadEvents:
+		case evt := <-m.KeypadEvents:
 			if !evt.State {
 				continue
 			}
 
-			instance.parent.Timers["keypad"].Reset()
-			instance.parent.Timers["screensaver"].Reset()
-			instance.parent.Display.On()
-			misc.KeyLightsOn()
-			go instance.parent.PlayKey()
+			m.Timers["keypad"].Reset()
+			m.Timers["screensaver"].Reset()
+			m.Display.On()
+			m.Keypad.KeyLightsOn()
+			go m.PlayKey()
 
 			switch evt.Key {
 			case 'P':
-				go instance.parent.Push("power")
+				go m.Push("power")
 				return SettingsActionSubmenuPushed
 			case 'S', 'C':
 				return SettingsActionShowSelector
@@ -271,30 +273,31 @@ func (instance *SettingsMenu) handleInternetStatus() int {
 }
 
 func (instance *SettingsMenu) handleJoinNetwork() int {
+	m := instance.parent
 	log.Println("⚙️ Scanning for networks...")
-	state, err := instance.parent.NetworkManager.GetPropertyWirelessEnabled()
+	state, err := m.NetworkManager.GetPropertyWirelessEnabled()
 	if err != nil {
 		panic(err.Error())
 	}
 	if !state {
-		instance.parent.RenderAlert("prohibited", []string{"WLAN", "currently", "off"})
-		go instance.parent.PlayAlert()
+		m.RenderAlert("prohibited", []string{"WLAN", "currently", "off"})
+		go m.PlayAlert()
 		time.Sleep(2 * time.Second)
 		return SettingsActionShowSelector
 	}
 
-	instance.parent.RenderAlert("info", []string{"Scanning", "for", "networks..."})
+	m.RenderAlert("info", []string{"Scanning", "for", "networks..."})
 
 	// Request a scan
-	if instance.parent.WifiDevice != nil {
-		go instance.parent.WifiDevice.RequestScan()
+	if m.WifiDevice != nil {
+		go m.WifiDevice.RequestScan()
 		// Wait a moment for scan results
 		time.Sleep(3 * time.Second)
 
-		aps, err := instance.parent.WifiDevice.GetPropertyAccessPoints()
+		aps, err := m.WifiDevice.GetPropertyAccessPoints()
 		if err != nil {
 			log.Println("Error getting APs:", err)
-			instance.parent.RenderAlert("prohibited", []string{"Scan", "failed"})
+			m.RenderAlert("prohibited", []string{"Scan", "failed"})
 			time.Sleep(2 * time.Second)
 			return SettingsActionShowSelector
 		}
@@ -333,12 +336,12 @@ func (instance *SettingsMenu) handleJoinNetwork() int {
 		}
 
 		if len(options) == 0 {
-			instance.parent.RenderAlert("info", []string{"No", "networks", "found"})
+			m.RenderAlert("info", []string{"No", "networks", "found"})
 			time.Sleep(2 * time.Second)
 			return SettingsActionShowSelector
 		}
 
-		selection := instance.parent.ShowSelector(SelectorArgs{
+		selection := m.ShowSelector(SelectorArgs{
 			SelectionClass:   "settings.wifi_join",
 			Title:            "Join network",
 			ShowTitle:        true,
@@ -352,7 +355,7 @@ func (instance *SettingsMenu) handleJoinNetwork() int {
 		}
 		return SettingsActionShowSelector
 	} else {
-		instance.parent.RenderAlert("prohibited", []string{"WiFi", "device", "error"})
+		m.RenderAlert("prohibited", []string{"WiFi", "device", "error"})
 		time.Sleep(2 * time.Second)
 	}
 	return SettingsActionShowSelector
@@ -446,24 +449,25 @@ exit:
 }
 
 func (instance *SettingsMenu) handlePairDevice() int {
+	m := instance.parent
 	log.Println("⚙️ Scanning for devices...")
 
 	if !misc.IsBluetoothEnabled() {
-		instance.parent.RenderAlert("prohibited", []string{"Bluetooth", "currently", "off"})
-		go instance.parent.PlayAlert()
+		m.RenderAlert("prohibited", []string{"Bluetooth", "currently", "off"})
+		go m.PlayAlert()
 		time.Sleep(2 * time.Second)
 		return SettingsActionShowSelector
 	}
 
 	// Temporarily stop timeouts for oled (prevent sleep mode from happening)
-	instance.parent.Timers["screensaver"].Stop()
-	instance.parent.Timers["keypad"].Stop()
-	misc.KeyLightsOn()
+	m.Timers["screensaver"].Stop()
+	m.Timers["keypad"].Stop()
+	m.Keypad.KeyLightsOn()
 
 	var found_devices [][]string
 
 	instance.bt_cache = make(map[string]string)
-	instance.parent.RenderAlert("info", []string{"Scanning", "for", "devices..."})
+	m.RenderAlert("info", []string{"Scanning", "for", "devices..."})
 
 	// Start scanning via bluetoothctl to force radio activity
 	scanCmd := exec.Command("bluetoothctl", "scan", "on")
@@ -520,17 +524,17 @@ func (instance *SettingsMenu) handlePairDevice() int {
 	})
 
 	// Resume timeouts
-	instance.parent.Timers["screensaver"].Restart()
-	instance.parent.Timers["keypad"].Restart()
+	m.Timers["screensaver"].Restart()
+	m.Timers["keypad"].Restart()
 
 	if len(found_devices) == 0 {
-		instance.parent.RenderAlert("info", []string{"No", "devices", "found."})
+		m.RenderAlert("info", []string{"No", "devices", "found."})
 		time.Sleep(2 * time.Second)
 		return SettingsActionShowSelector
 	}
 
 	log.Println("⚙️ Settings switching to device pair selector")
-	selection := instance.parent.ShowSelector(SelectorArgs{
+	selection := m.ShowSelector(SelectorArgs{
 		SelectionClass:   "settings.btpair",
 		Title:            "Pair Device",
 		ShowTitle:        true,
@@ -546,22 +550,23 @@ func (instance *SettingsMenu) handlePairDevice() int {
 }
 
 func (instance *SettingsMenu) handleConfigureAPN() int {
+	m := instance.parent
 	log.Println("⚙️ Configuring APN...")
-	apn, _ := instance.parent.Get("APN").(string)
-	newAPN := instance.parent.InputPrompt(InputPromptArgs{Title: "Enter APN", DefaultValue: apn, CharacterLimit: 50}, instance.ctx)
+	apn, _ := m.Get("APN").(string)
+	newAPN := m.InputPrompt(InputPromptArgs{Title: "Enter APN", DefaultValue: apn, CharacterLimit: 50}, instance.ctx)
 	if newAPN != "" {
 
 		// Check if currently connected
 		connected := misc.CheckCellularData(apn)
 		if connected {
 			// Disconnect from current APN
-			instance.parent.RenderAlert("info", []string{"Please", "wait..."})
+			m.RenderAlert("info", []string{"Please", "wait..."})
 			misc.SetCellularDataState(apn, false)
 		}
 
 		// Save new APN
-		instance.parent.Set("APN", newAPN)
-		go instance.parent.SyncPersistent()
+		m.Set("APN", newAPN)
+		go m.SyncPersistent()
 
 		// Connect to new APN
 		if connected {
@@ -570,8 +575,8 @@ func (instance *SettingsMenu) handleConfigureAPN() int {
 
 		// Notify user
 		animCtx, animCancel := context.WithCancel(instance.ctx)
-		instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"APN", "saved"})
-		go instance.parent.PlayAccepted()
+		m.RenderAnimatedAlert("ok", animCtx, []string{"APN", "saved"})
+		go m.PlayAccepted()
 		time.Sleep(2 * time.Second)
 		animCancel()
 	}
@@ -579,6 +584,7 @@ func (instance *SettingsMenu) handleConfigureAPN() int {
 }
 
 func (instance *SettingsMenu) handleWifiJoin(selection_path []string) {
+	m := instance.parent
 	if len(selection_path) > 0 {
 		ssid := selection_path[0]
 		log.Println("⚙️ Joining network:", ssid)
@@ -596,7 +602,7 @@ func (instance *SettingsMenu) handleWifiJoin(selection_path []string) {
 			// Simple check: if any privacy flag is set, ask for password
 			// NM_802_11_AP_FLAGS_PRIVACY = 0x1
 			if (flags&1) != 0 || wpaFlags != 0 || rsnFlags != 0 {
-				password = instance.parent.InputPrompt(InputPromptArgs{Title: "Input password"}, instance.ctx)
+				password = m.InputPrompt(InputPromptArgs{Title: "Input password"}, instance.ctx)
 				if password == "" {
 					// User cancelled
 					return
@@ -604,7 +610,7 @@ func (instance *SettingsMenu) handleWifiJoin(selection_path []string) {
 			}
 		}
 
-		instance.parent.RenderAlert("info", []string{"Please", "wait..."})
+		m.RenderAlert("info", []string{"Please", "wait..."})
 
 		// Create connection settings
 		connSettings := make(map[string]map[string]any)
@@ -622,13 +628,13 @@ func (instance *SettingsMenu) handleWifiJoin(selection_path []string) {
 		}
 
 		// Add and activate
-		_, err := instance.parent.NetworkManager.AddAndActivateConnection(connSettings, instance.parent.WifiDevice)
+		_, err := m.NetworkManager.AddAndActivateConnection(connSettings, m.WifiDevice)
 		animCtx, animCancel := context.WithCancel(instance.ctx)
 		if err != nil {
 			log.Println("Connection error:", err)
-			instance.parent.RenderAlert("prohibited", []string{"Failed to", "create", "connection"})
+			m.RenderAlert("prohibited", []string{"Failed to", "create", "connection"})
 		} else {
-			instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
+			m.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
 		}
 		time.Sleep(2 * time.Second)
 		animCancel()
@@ -636,12 +642,13 @@ func (instance *SettingsMenu) handleWifiJoin(selection_path []string) {
 }
 
 func (instance *SettingsMenu) handleWifiSavedSelection(selection_path []string) {
+	m := instance.parent
 	if len(selection_path) > 0 {
 		instance.current_target = selection_path[0]
 
 		// Check if connected
 		isConnected := false
-		activeConns, _ := instance.parent.NetworkManager.GetPropertyActiveConnections()
+		activeConns, _ := m.NetworkManager.GetPropertyActiveConnections()
 		for _, ac := range activeConns {
 			id, _ := ac.GetPropertyID()
 			if id == instance.current_target {
@@ -656,7 +663,7 @@ func (instance *SettingsMenu) handleWifiSavedSelection(selection_path []string) 
 		}
 
 		// Show options for the saved network
-		selection := instance.parent.ShowSelector(SelectorArgs{
+		selection := m.ShowSelector(SelectorArgs{
 			SelectionClass:   "settings.wifi_saved_action",
 			Title:            instance.current_target,
 			ShowTitle:        true,
@@ -672,6 +679,7 @@ func (instance *SettingsMenu) handleWifiSavedSelection(selection_path []string) 
 }
 
 func (instance *SettingsMenu) handleWifiSavedAction(selection_path []string) {
+	m := instance.parent
 	if len(selection_path) > 0 && instance.current_target != "" {
 		action := selection_path[0]
 		conn, ok := instance.conn_cache[instance.current_target]
@@ -682,42 +690,42 @@ func (instance *SettingsMenu) handleWifiSavedAction(selection_path []string) {
 			case "Forget":
 				err := conn.Delete()
 				if err == nil {
-					instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Network", "forgotten"})
+					m.RenderAnimatedAlert("ok", animCtx, []string{"Network", "forgotten"})
 				} else {
-					instance.parent.RenderAlert("prohibited", []string{"Error", "forgetting"})
+					m.RenderAlert("prohibited", []string{"Error", "forgetting"})
 				}
 			case "Connect":
-				if state, err := instance.parent.NetworkManager.GetPropertyWirelessEnabled(); err != nil {
+				if state, err := m.NetworkManager.GetPropertyWirelessEnabled(); err != nil {
 					panic(err.Error())
 				} else if !state {
-					instance.parent.RenderAlert("prohibited", []string{"WLAN", "currently", "off"})
-					go instance.parent.PlayAlert()
+					m.RenderAlert("prohibited", []string{"WLAN", "currently", "off"})
+					go m.PlayAlert()
 				} else {
-					instance.parent.RenderAlert("info", []string{"Please", "wait..."})
-					_, err := instance.parent.NetworkManager.ActivateConnection(conn, instance.parent.WifiDevice, nil)
+					m.RenderAlert("info", []string{"Please", "wait..."})
+					_, err := m.NetworkManager.ActivateConnection(conn, m.WifiDevice, nil)
 					if err != nil {
-						instance.parent.RenderAlert("prohibited", []string{"Connect", "failed"})
+						m.RenderAlert("prohibited", []string{"Connect", "failed"})
 					} else {
-						instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
+						m.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
 					}
 				}
 			case "Disconnect":
-				if state, err := instance.parent.NetworkManager.GetPropertyWirelessEnabled(); err != nil {
+				if state, err := m.NetworkManager.GetPropertyWirelessEnabled(); err != nil {
 					panic(err.Error())
 				} else if !state {
-					instance.parent.RenderAlert("prohibited", []string{"WLAN", "currently", "off"})
-					go instance.parent.PlayAlert()
+					m.RenderAlert("prohibited", []string{"WLAN", "currently", "off"})
+					go m.PlayAlert()
 				} else {
-					instance.parent.RenderAlert("info", []string{"Please", "wait..."})
-					activeConns, _ := instance.parent.NetworkManager.GetPropertyActiveConnections()
+					m.RenderAlert("info", []string{"Please", "wait..."})
+					activeConns, _ := m.NetworkManager.GetPropertyActiveConnections()
 					for _, ac := range activeConns {
 						id, _ := ac.GetPropertyID()
 						if id == instance.current_target {
-							err := instance.parent.NetworkManager.DeactivateConnection(ac)
+							err := m.NetworkManager.DeactivateConnection(ac)
 							if err != nil {
-								instance.parent.RenderAlert("prohibited", []string{"Disconnect", "failed"})
+								m.RenderAlert("prohibited", []string{"Disconnect", "failed"})
 							} else {
-								instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
+								m.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
 							}
 							break
 						}
@@ -732,6 +740,7 @@ func (instance *SettingsMenu) handleWifiSavedAction(selection_path []string) {
 }
 
 func (instance *SettingsMenu) handleBtSavedSelection(selection_path []string) {
+	m := instance.parent
 	if len(selection_path) > 0 {
 		instance.current_target = selection_path[0]
 
@@ -749,7 +758,7 @@ func (instance *SettingsMenu) handleBtSavedSelection(selection_path []string) {
 			action = "Disconnect"
 		}
 
-		selection := instance.parent.ShowSelector(SelectorArgs{
+		selection := m.ShowSelector(SelectorArgs{
 			SelectionClass:   "settings.bt_saved_action",
 			Title:            instance.current_target,
 			ShowTitle:        true,
@@ -765,6 +774,7 @@ func (instance *SettingsMenu) handleBtSavedSelection(selection_path []string) {
 }
 
 func (instance *SettingsMenu) handleBtSavedAction(selection_path []string) {
+	m := instance.parent
 	if len(selection_path) > 0 && instance.current_target != "" {
 		action := selection_path[0]
 		mac, ok := instance.bt_cache[instance.current_target]
@@ -774,20 +784,20 @@ func (instance *SettingsMenu) handleBtSavedAction(selection_path []string) {
 			switch action {
 			case "Forget":
 				exec.Command("bluetoothctl", "remove", mac).Run()
-				instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
+				m.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
 			case "Connect":
-				instance.parent.RenderAlert("info", []string{"Please", "wait..."})
+				m.RenderAlert("info", []string{"Please", "wait..."})
 				if err := exec.Command("bluetoothctl", "connect", mac).Run(); err != nil {
-					instance.parent.RenderAlert("prohibited", []string{"Connect", "failed"})
+					m.RenderAlert("prohibited", []string{"Connect", "failed"})
 				} else {
-					instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
+					m.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
 				}
 			case "Disconnect":
-				instance.parent.RenderAlert("info", []string{"Please", "wait..."})
+				m.RenderAlert("info", []string{"Please", "wait..."})
 				if err := exec.Command("bluetoothctl", "disconnect", mac).Run(); err != nil {
-					instance.parent.RenderAlert("prohibited", []string{"connect", "failed"})
+					m.RenderAlert("prohibited", []string{"connect", "failed"})
 				} else {
-					instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
+					m.RenderAnimatedAlert("ok", animCtx, []string{"Done"})
 				}
 			}
 			time.Sleep(2 * time.Second)
@@ -812,9 +822,9 @@ func (instance *SettingsMenu) Run() {
 	log.Println("⚙️ Settings started")
 
 	for {
-		selection := instance.parent.ShowSelector(*instance.default_args, instance.ctx)
+		selection := m.ShowSelector(*instance.default_args, instance.ctx)
 		if selection == nil {
-			instance.parent.Pop()
+			m.Pop()
 			return
 		}
 
@@ -822,7 +832,7 @@ func (instance *SettingsMenu) Run() {
 			action := instance.SettingsMain(selection.SelectionPath)
 			switch action {
 			case SettingsActionExit:
-				instance.parent.Pop()
+				m.Pop()
 				return
 			case SettingsActionSubmenuPushed:
 				// Do nothing
@@ -918,31 +928,32 @@ func (instance *SettingsMenu) GetNetworkInfo() gonetworkmanager.ActiveConnection
 // and then re-render the main menu. For now, it just confirms
 // the selection and re-renders the main menu.
 func (instance *SettingsMenu) BluetoothPair(selection_path []string) {
+	m := instance.parent
 	if len(selection_path) > 0 {
 		selection := selection_path[0]
 		log.Println("⚙️ Selected device:", selection)
 
 		mac, ok := instance.bt_cache[selection]
 		if !ok {
-			instance.parent.RenderAlert("prohibited", []string{"Device", "not found"})
-			go instance.parent.PlayAlert()
+			m.RenderAlert("prohibited", []string{"Device", "not found"})
+			go m.PlayAlert()
 			time.Sleep(2 * time.Second)
 			return
 		}
 
-		instance.parent.RenderAlert("info", []string{"Pairing", "..."})
+		m.RenderAlert("info", []string{"Pairing", "..."})
 
 		// Attempt to pair, trust, and connect
 		exec.Command("bluetoothctl", "pair", mac).Run()
 		exec.Command("bluetoothctl", "trust", mac).Run()
 		err := exec.Command("bluetoothctl", "connect", mac).Run()
-		animCtx, animCancel := context.WithCancel(instance.parent.GlobalContext)
+		animCtx, animCancel := context.WithCancel(m.GlobalContext)
 		if err != nil {
 			log.Println("BT Connect error:", err)
-			instance.parent.RenderAlert("prohibited", []string{"Connection", "failed"})
-			go instance.parent.PlayAlert()
+			m.RenderAlert("prohibited", []string{"Connection", "failed"})
+			go m.PlayAlert()
 		} else {
-			instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Connected"})
+			m.RenderAnimatedAlert("ok", animCtx, []string{"Connected"})
 		}
 		time.Sleep(2 * time.Second)
 		animCancel()
@@ -950,6 +961,7 @@ func (instance *SettingsMenu) BluetoothPair(selection_path []string) {
 }
 
 func (instance *SettingsMenu) handleSavedNetworks() int {
+	m := instance.parent
 	settings, err := gonetworkmanager.NewSettings()
 	if err != nil {
 		log.Println("Error getting settings:", err)
@@ -988,12 +1000,12 @@ func (instance *SettingsMenu) handleSavedNetworks() int {
 	}
 
 	if len(options) == 0 {
-		instance.parent.RenderAlert("info", []string{"No", "saved", "networks"})
+		m.RenderAlert("info", []string{"No", "saved", "networks"})
 		time.Sleep(2 * time.Second)
 		return SettingsActionShowSelector
 	}
 
-	selection := instance.parent.ShowSelector(SelectorArgs{
+	selection := m.ShowSelector(SelectorArgs{
 		SelectionClass:   "settings.wifi_saved",
 		Title:            "Saved networks",
 		ShowTitle:        true,
@@ -1009,9 +1021,10 @@ func (instance *SettingsMenu) handleSavedNetworks() int {
 }
 
 func (instance *SettingsMenu) handleSavedBluetooth() int {
+	m := instance.parent
 	out, err := exec.Command("bluetoothctl", "devices", "Paired").Output()
 	if err != nil {
-		instance.parent.RenderAlert("prohibited", []string{"Error", "listing"})
+		m.RenderAlert("prohibited", []string{"Error", "listing"})
 		return SettingsActionShowSelector
 	}
 
@@ -1030,12 +1043,12 @@ func (instance *SettingsMenu) handleSavedBluetooth() int {
 	}
 
 	if len(options) == 0 {
-		instance.parent.RenderAlert("info", []string{"No", "saved", "devices"})
+		m.RenderAlert("info", []string{"No", "saved", "devices"})
 		time.Sleep(2 * time.Second)
 		return SettingsActionShowSelector
 	}
 
-	selection := instance.parent.ShowSelector(SelectorArgs{
+	selection := m.ShowSelector(SelectorArgs{
 		SelectionClass:   "settings.bt_saved",
 		Title:            "Saved devices",
 		ShowTitle:        true,

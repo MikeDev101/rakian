@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"misc"
 	"timers"
 )
 
@@ -98,14 +97,14 @@ func (instance *PhoneMenu) Run() {
 
 	// Disable screensaver
 	go m.Timers["screensaver"].Stop()
-	misc.KeyLightsOn()
+	m.Keypad.KeyLightsOn()
 
 	// Main render loop
 	instance.wg.Go(func() {
 		for {
 			select {
 			case <-instance.ctx.Done():
-				misc.KeyLightsOn()
+				instance.parent.Keypad.KeyLightsOn()
 				go m.Timers["keypad"].Restart()
 				go m.Timers["screensaver"].Restart()
 				return
@@ -139,7 +138,7 @@ func (instance *PhoneMenu) Run() {
 					m.Timers["keypad"].Reset()
 					m.Timers["screensaver"].Reset()
 					m.Display.On()
-					misc.KeyLightsOn()
+					m.Keypad.KeyLightsOn()
 
 					switch evt.Key {
 

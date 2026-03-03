@@ -69,23 +69,6 @@ func SoftReboot() {
 	os.Exit(0)
 }
 
-func KeyLightsOn() {
-	/* if err := rpio.Open(); err != nil {
-		panic(err)
-	}
-	p := rpio.Pin(13)
-	p.Output()
-	p.High() */
-}
-
-func KeyLightsOff() {
-	/* if err := rpio.Open(); err != nil {
-		panic(err)
-	}
-	p := rpio.Pin(13)
-	p.Output()
-	p.Low() */
-}
 
 func SleepWithContext(duration time.Duration, ctx context.Context) {
 	timer := time.NewTimer(duration)

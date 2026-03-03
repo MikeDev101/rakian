@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"misc"
 	"timers"
 )
 
@@ -93,7 +92,7 @@ func (instance *DialerMenu) Run() {
 				m.Timers["keypad"].Reset()
 				m.Timers["screensaver"].Reset()
 				m.Display.On()
-				misc.KeyLightsOn()
+				instance.parent.Keypad.KeyLightsOn()
 				switch evt.Key {
 				case '*':
 					go m.playDTMF('*')

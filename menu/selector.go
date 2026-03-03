@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"gfx"
-	"misc"
 )
 
 const (
@@ -86,7 +85,7 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 	// Temporarily stop timeouts
 	m.Timers["screensaver"].Stop()
 	m.Timers["keypad"].Stop()
-	misc.KeyLightsOn()
+	m.Keypad.KeyLightsOn()
 	defer m.Timers["screensaver"].Restart()
 	defer m.Timers["keypad"].Restart()
 
@@ -177,7 +176,7 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 			return nil
 		case evt := <-m.KeypadEvents:
 			if evt.State {
-				misc.KeyLightsOn()
+				m.Keypad.KeyLightsOn()
 
 				current_options := get_current_options()
 

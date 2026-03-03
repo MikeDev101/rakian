@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"misc"
 	"timers"
 )
 
@@ -78,7 +77,7 @@ func (instance *DummyMenu) Run() {
 					instance.parent.Timers["keypad"].Reset()
 					instance.parent.Timers["screensaver"].Reset()
 					instance.parent.Display.On()
-					misc.KeyLightsOn()
+					instance.parent.Keypad.KeyLightsOn()
 					go instance.parent.PlayKey()
 
 					if evt.Key == 'P' {

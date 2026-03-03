@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gfx"
-	"misc"
 	"strings"
 	"time"
 )
@@ -55,7 +54,7 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 	// Temporarily stop timeouts
 	instance.Timers["screensaver"].Stop()
 	instance.Timers["keypad"].Stop()
-	misc.KeyLightsOn()
+	instance.Keypad.KeyLightsOn()
 	defer instance.Timers["screensaver"].Restart()
 	defer instance.Timers["keypad"].Restart()
 
@@ -140,7 +139,7 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 						close(cancelChan)
 					})
 
-					misc.KeyLightsOn()
+					instance.Keypad.KeyLightsOn()
 					go instance.PlayKey()
 
 					lastKey = 0
@@ -164,7 +163,7 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 			if !evt.State {
 				continue
 			}
-			misc.KeyLightsOn()
+			instance.Keypad.KeyLightsOn()
 			go instance.PlayKey()
 
 			now := time.Now()

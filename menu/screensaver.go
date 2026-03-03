@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"gfx"
-	"misc"
 )
 
 type Screensaver struct {
@@ -73,6 +72,7 @@ func (instance *Screensaver) ConfigureWithArgs(args ...any) {
 }
 
 func (instance *Screensaver) Run() {
+	m := instance.parent
 	if !instance.configured {
 		panic("Attempted to call (*Screensaver).Run() before (*Screensaver).Configure()!")
 	}
@@ -88,15 +88,15 @@ func (instance *Screensaver) Run() {
 	now := time.Now()
 	next := now.Truncate(time.Minute).Add(time.Minute)
 	delay := next.Sub(now)
-	if instance.parent.DebugMode {
+	if m.DebugMode {
 		log.Printf("⏾ Initial screensaver delay: %s", delay)
 	}
 
-	instance.parent.Timers["screensaver"].Stop()
+	m.Timers["screensaver"].Stop()
 
 	// Switch modem mode
-	/* if instance.parent.Modem != nil {
-		instance.parent.Modem.SwitchToPowerSaveMode()
+	/* if m.Modem != nil {
+		m.Modem.SwitchToPowerSaveMode()
 	} */
 
 	// Start the screensaver loop
@@ -113,7 +113,7 @@ func (instance *Screensaver) Run() {
 				delay = time.Minute
 
 				// Render frame
-				if instance.parent.DebugMode {
+				if m.DebugMode {
 					log.Println("⏾ Screensaver timer raised")
 				}
 				instance.render()
@@ -129,14 +129,14 @@ func (instance *Screensaver) Run() {
 			case <-instance.ctx.Done():
 				return
 
-			case evt := <-instance.parent.KeypadEvents:
+			case evt := <-m.KeypadEvents:
 				if evt.State {
-					instance.parent.Timers["keypad"].Restart()
-					instance.parent.Timers["screensaver"].Restart()
-					instance.parent.Display.On()
-					misc.KeyLightsOn()
-					go instance.parent.PlayKey()
-					go instance.parent.Pop()
+					m.Timers["keypad"].Restart()
+					m.Timers["screensaver"].Restart()
+					m.Display.On()
+					m.Keypad.KeyLightsOn()
+					go m.PlayKey()
+					go m.Pop()
 					return
 				}
 			}

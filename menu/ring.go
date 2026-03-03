@@ -136,7 +136,7 @@ func (instance *RingMenu) Run() {
 					m.Timers["keypad"].Reset()
 					m.Timers["screensaver"].Reset()
 					m.Display.On()
-					misc.KeyLightsOn()
+					m.Keypad.KeyLightsOn()
 					switch evt.Key {
 					case 'S':
 						go m.PlayKey()

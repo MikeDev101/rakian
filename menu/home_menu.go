@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"gfx"
-	"misc"
 )
 
 type HomeSelectionMenu struct {
@@ -118,7 +117,7 @@ func (instance *HomeSelectionMenu) Run() {
 					instance.parent.Timers["keypad"].Reset()
 					instance.parent.Timers["screensaver"].Reset()
 					instance.parent.Display.On()
-					misc.KeyLightsOn()
+					instance.parent.Keypad.KeyLightsOn()
 
 					switch evt.Key {
 					case '*':

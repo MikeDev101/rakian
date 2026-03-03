@@ -60,6 +60,24 @@ func New() keypad.Keypad {
 	return kp
 }
 
+func (k *Hardware_Keypad) KeyLightsOn() {
+	/* if err := rpio.Open(); err != nil {
+		panic(err)
+	}
+	p := rpio.Pin(13)
+	p.Output()
+	p.High() */
+}
+
+func (k *Hardware_Keypad) KeyLightsOff() {
+	/* if err := rpio.Open(); err != nil {
+		panic(err)
+	}
+	p := rpio.Pin(13)
+	p.Output()
+	p.Low() */
+}
+
 func stop(colPins []*PinOut) {
 	for _, colPin := range colPins {
 		colPin.Low()

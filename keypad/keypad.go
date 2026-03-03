@@ -29,4 +29,6 @@ var KeyMap = map[[2]int]rune{
 
 type Keypad interface {
 	Run(ctx context.Context, debug bool) <-chan *KeypadEvent
+	KeyLightsOn()
+	KeyLightsOff()
 }
