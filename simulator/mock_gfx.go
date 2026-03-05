@@ -56,6 +56,7 @@ func (v *Simulator) Render() {
 	})
 }
 
+
 func (v *Simulator) Clear(c color.Color) {
 	v.ctx.SetColor(c)
 	v.ctx.Clear()

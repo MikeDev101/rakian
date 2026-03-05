@@ -5,6 +5,7 @@ import (
 	"gfx"
 	"image"
 	"image/color"
+	"os"
 	"sync"
 	"time"
 
@@ -85,8 +86,12 @@ func New(dc, rst rpio.Pin) gfx.Driver {
 }
 
 // Dummy functions
-func (*PCD8544) Start() {
-	for {
+func (*PCD8544) Start(sigs chan os.Signal, ctx context.Context) {
+	select {
+	case <-sigs:
+		return
+	case <-ctx.Done():
+		return
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"keypad"
 	"modem"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -237,7 +238,15 @@ func (v *Simulator) Run(ctx context.Context, debug bool) <-chan *keypad.KeypadEv
 	return v.keyEvents
 }
 
-func (v *Simulator) Start() {
+func (v *Simulator) Start(sigs chan os.Signal, ctx context.Context) {
+	go func() {
+		select {
+		case <-sigs:
+			v.Stop()
+		case <-ctx.Done():
+			v.Stop()
+		}
+	}()
 	v.window.ShowAndRun()
 }
 

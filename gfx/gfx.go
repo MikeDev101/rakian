@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"log"
 	"math"
+	"os"
 	"strings"
 	"time"
 
@@ -73,7 +74,7 @@ type Driver interface {
 	Render()
 	Clear(color.Color)
 	Stop()
-	Start()
+	Start(chan os.Signal, context.Context)
 
 	// Acccessors
 	Width() int
@@ -463,6 +464,7 @@ func DrawTextAligned(d Driver, x, y int, f map[rune]*image.Image, s string, inve
 
 	DrawText(d, cx, cy, f, s, invert)
 }
+
 func DrawTextWrapped(d Driver, x1, y1, x2, y2 int, f map[rune]*image.Image, s string, invert bool, h_align, v_align RenderType) {
 	words := strings.Fields(s)
 	if len(words) == 0 {
