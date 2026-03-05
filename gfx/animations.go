@@ -137,18 +137,18 @@ func LoadAnimations(d Driver) {
 		FrameDelay: 50 * time.Millisecond,
 	})
 
-	d.SetAnimationCache("phonebook", &Animation{
+	d.SetAnimationCache("phone_book", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
-			Image: "phonebook_0",
+			Image: "phone_book_0",
 		},
 		InitialFrameDelay: 1 * time.Second,
 		Frames: []Frame{
-			{Type: PLAY_FRAME, Image: "phonebook_1"},
-			{Type: PLAY_FRAME, Image: "phonebook_2"},
-			{Type: PLAY_FRAME, Image: "phonebook_3"},
-			{Type: PLAY_FRAME, Image: "phonebook_0"},
-			{Type: STOP_FRAME, Image: "phonebook_1"},
+			{Type: PLAY_FRAME, Image: "phone_book_1"},
+			{Type: PLAY_FRAME, Image: "phone_book_2"},
+			{Type: PLAY_FRAME, Image: "phone_book_3"},
+			{Type: PLAY_FRAME, Image: "phone_book_0"},
+			{Type: STOP_FRAME, Image: "phone_book_1"},
 		},
 		Loop:       true,
 		FrameDelay: 250 * time.Millisecond,
@@ -179,33 +179,31 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "messages_11"},
 			{Type: STOP_FRAME, Image: "messages_0"},
 		},
-		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-		LoopDelay:  1 * time.Second,
 	})
 
-	d.SetAnimationCache("chats", &Animation{
+	d.SetAnimationCache("chat", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
-			Image: "chats_0",
+			Image: "chat_0",
 		},
 		InitialFrameDelay: 1 * time.Second,
 		Frames: []Frame{
-			{Type: PLAY_FRAME, Image: "chats_0"},
-			{Type: PLAY_FRAME, Image: "chats_1"},
-			{Type: PLAY_FRAME, Image: "chats_2"},
-			{Type: PLAY_FRAME, Image: "chats_3"},
-			{Type: PLAY_FRAME, Image: "chats_4"},
-			{Type: PLAY_FRAME, Image: "chats_5"},
-			{Type: PLAY_FRAME, Image: "chats_6"},
-			{Type: PLAY_FRAME, Image: "chats_7"},
-			{Type: PLAY_FRAME, Image: "chats_8"},
-			{Type: PLAY_FRAME, Image: "chats_9"},
-			{Type: PLAY_FRAME, Image: "chats_10"},
-			{Type: STOP_FRAME, Image: "chats_11"},
+			{Type: PLAY_FRAME, Image: "chat_0"},
+			{Type: PLAY_FRAME, Image: "chat_1"},
+			{Type: PLAY_FRAME, Image: "chat_2"},
+			{Type: PLAY_FRAME, Image: "chat_3"},
+			{Type: PLAY_FRAME, Image: "chat_4"},
+			{Type: PLAY_FRAME, Image: "chat_5"},
+			{Type: PLAY_FRAME, Image: "chat_6"},
+			{Type: PLAY_FRAME, Image: "chat_7"},
+			{Type: PLAY_FRAME, Image: "chat_8"},
+			{Type: PLAY_FRAME, Image: "chat_9"},
+			{Type: PLAY_FRAME, Image: "chat_10"},
+			{Type: PLAY_FRAME, Image: "chat_11"},
+			{Type: STOP_FRAME, Image: "chat_0"},
 		},
-		Loop:       true,
-		FrameDelay: 150 * time.Millisecond,
+		FrameDelay: 250 * time.Millisecond,
 	})
 
 	d.SetAnimationCache("call_register", &Animation{
@@ -225,9 +223,9 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "call_register_7"},
 			{Type: PLAY_FRAME, Image: "call_register_8"},
 			{Type: PLAY_FRAME, Image: "call_register_9"},
-			{Type: STOP_FRAME, Image: "call_register_10"},
+			{Type: PLAY_FRAME, Image: "call_register_10"},
+			{Type: STOP_FRAME, Image: "call_register_0"},
 		},
-		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 	})
 
@@ -247,7 +245,6 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "settings_6"},
 			{Type: STOP_FRAME, Image: "settings_7"},
 		},
-		Loop:       false,
 		FrameDelay: 150 * time.Millisecond,
 	})
 
@@ -268,9 +265,9 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "call_divert_7"},
 			{Type: PLAY_FRAME, Image: "call_divert_8"},
 			{Type: PLAY_FRAME, Image: "call_divert_9"},
-			{Type: STOP_FRAME, Image: "call_divert_10"},
+			{Type: PLAY_FRAME, Image: "call_divert_10"},
+			{Type: STOP_FRAME, Image: "call_divert_0"},
 		},
-		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
 	})
 
@@ -306,9 +303,7 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "calculator_11"},
 			{Type: STOP_FRAME, Image: "calculator_12"},
 		},
-		Loop:       true,
 		FrameDelay: 500 * time.Millisecond,
-		LoopDelay:  1 * time.Second,
 	})
 
 	d.SetAnimationCache("clock", &Animation{
@@ -326,31 +321,29 @@ func LoadAnimations(d Driver) {
 		FrameDelay: 150 * time.Millisecond,
 	})
 
-	d.SetAnimationCache("notes", &Animation{
+	d.SetAnimationCache("reminders", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
-			Image: "notes_0",
+			Image: "reminders_0",
 		},
 		InitialFrameDelay: 1 * time.Second,
 		Frames: []Frame{
-			{Type: PLAY_FRAME, Image: "notes_0"},
-			{Type: PLAY_FRAME, Image: "notes_1"},
-			{Type: PLAY_FRAME, Image: "notes_2"},
-			{Type: PLAY_FRAME, Image: "notes_3"},
-			{Type: PLAY_FRAME, Image: "notes_4"},
-			{Type: PLAY_FRAME, Image: "notes_5"},
-			{Type: PLAY_FRAME, Image: "notes_6"},
-			{Type: PLAY_FRAME, Image: "notes_7"},
-			{Type: PLAY_FRAME, Image: "notes_8"},
-			{Type: PLAY_FRAME, Image: "notes_9"},
-			{Type: PLAY_FRAME, Image: "notes_10"},
-			{Type: PLAY_FRAME, Image: "notes_11"},
-			{Type: PLAY_FRAME, Image: "notes_12"},
-			{Type: STOP_FRAME, Image: "notes_13"},
+			{Type: PLAY_FRAME, Image: "reminders_0"},
+			{Type: PLAY_FRAME, Image: "reminders_1"},
+			{Type: PLAY_FRAME, Image: "reminders_2"},
+			{Type: PLAY_FRAME, Image: "reminders_3"},
+			{Type: PLAY_FRAME, Image: "reminders_4"},
+			{Type: PLAY_FRAME, Image: "reminders_5"},
+			{Type: PLAY_FRAME, Image: "reminders_6"},
+			{Type: PLAY_FRAME, Image: "reminders_7"},
+			{Type: PLAY_FRAME, Image: "reminders_8"},
+			{Type: PLAY_FRAME, Image: "reminders_9"},
+			{Type: PLAY_FRAME, Image: "reminders_10"},
+			{Type: PLAY_FRAME, Image: "reminders_11"},
+			{Type: PLAY_FRAME, Image: "reminders_12"},
+			{Type: STOP_FRAME, Image: "reminders_13"},
 		},
-		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-		LoopDelay:  1 * time.Second,
 	})
 
 	d.SetAnimationCache("tones", &Animation{
@@ -378,9 +371,7 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "tones_15"},
 			{Type: STOP_FRAME, Image: "tones_16"},
 		},
-		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-		LoopDelay:  1 * time.Second,
 	})
 
 	d.SetAnimationCache("sim_tools", &Animation{
@@ -402,9 +393,7 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "sim_tools_1"},
 			{Type: STOP_FRAME, Image: "sim_tools_0"},
 		},
-		Loop:       true,
 		FrameDelay: 150 * time.Millisecond,
-		LoopDelay:  1 * time.Second,
 	})
 
 	d.SetAnimationCache("drawing", &Animation{
@@ -424,8 +413,6 @@ func LoadAnimations(d Driver) {
 			{Type: PLAY_FRAME, Image: "drawing_7"},
 			{Type: STOP_FRAME, Image: "drawing_8"},
 		},
-		Loop:       true,
-		FrameDelay: 150 * time.Millisecond,
-		LoopDelay:  1 * time.Second,
+		FrameDelay: 200 * time.Millisecond,
 	})
 }

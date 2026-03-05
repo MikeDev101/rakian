@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	// "hardware_keypad"
-	// "sim7600x"
+	"sim7600x"
 	// "pcd8544"
 
 	"misc"
@@ -63,7 +63,7 @@ func main() {
 	vio := simulator.New()
 	display := vio.Display()
 	keypad := vio.Keypad()
-	phone := vio.Phone()
+	// phone := vio.Phone()
 
 	lcd_powerdown := func() {
 		display.Clear(display.Primary())
@@ -91,7 +91,7 @@ func main() {
 	player := tones.New()
 
 	// Uncomment to use real interfaces
-	// phone := sim7600x.New(debug, database)
+	phone := sim7600x.New(debug, database)
 	// hardware_kp := hardware_keypad.New()
 	// rawKeypadEvents := hardware_kp.Run(ctx, debug)
 

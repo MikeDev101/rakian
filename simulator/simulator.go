@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"keypad"
 	"modem"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/fogleman/gg"
@@ -79,7 +81,12 @@ func New() *Simulator {
 
 	mainMenu := fyne.NewMainMenu(
 		fyne.NewMenu("File",
-			fyne.NewMenuItem("Quit", func() { v.app.Quit() }),
+			fyne.NewMenuItem("About", func() {
+				dialog.NewInformation("About",
+					"Rakian Debugger v1",
+					v.window,
+				).Show()
+			}),
 		),
 		fyne.NewMenu(
 			"Mock Modem",
@@ -95,16 +102,78 @@ func New() *Simulator {
 			fyne.NewMenuItem("Toggle SOS", func() {
 				v.mockModem.(*MockModem).sos = !v.mockModem.(*MockModem).sos
 			}),
-			fyne.NewMenuItem("Set Signal Strength", func() {
-				// TODO: Prompt for a number
-
-			}),
-			fyne.NewMenuItem("Set Carrier", func() {
-				// TODO: Prompt for a string
-
-			}),
 			fyne.NewMenuItem("Toggle Roaming", func() {
 				v.mockModem.(*MockModem).roaming = !v.mockModem.(*MockModem).roaming
+			}),
+			fyne.NewMenuItem("Set Signal Strength", func() {
+				dialog.NewEntryDialog("Signal Strength", "Enter value (0-5):", func(s string) {
+					if val, err := strconv.Atoi(s); err == nil {
+						v.mockModem.(*MockModem).signalStrength = val
+					}
+				}, v.window).Show()
+			}),
+			fyne.NewMenuItem("Set Carrier", func() {
+				dialog.NewEntryDialog("Set Carrier", "Enter carrier name:", func(s string) {
+					if s != "" {
+						v.mockModem.(*MockModem).carrier = s
+					}
+				}, v.window).Show()
+			}),
+			fyne.NewMenuItem("Simulate Incoming Call", func() {
+				dialog.NewEntryDialog("Incoming Call", "Enter phone number:", func(s string) {
+					if s != "" {
+						v.mockModem.(*MockModem).SimulateIncomingCall(s)
+					}
+				}, v.window).Show()
+			}),
+			fyne.NewMenuItem("Set Call State", func() {
+				dialog.NewForm(
+					"Set Call State",
+					"OK",
+					"Cancel",
+					[]*widget.FormItem{
+						widget.NewFormItem("", widget.NewRadioGroup(
+							[]string{
+								"Outgoing",
+								"Active",
+								"Held",
+								"Incoming",
+								"Waiting",
+								"Terminated",
+							},
+							func(s string) {
+								// TODO
+							},
+						)),
+					},
+					func(b bool) {},
+					v.window,
+				).Show()
+			}),
+		),
+		fyne.NewMenu(
+			"Power Events",
+			fyne.NewMenuItem("Set Battery Level", func() {
+				dialog.NewEntryDialog("Battery Level", "Enter value (0-5):", func(s string) {
+					if _, err := strconv.Atoi(s); err == nil {
+						// TODO
+					}
+				}, v.window).Show()
+			}),
+			fyne.NewMenuItem("Send Charging Signal", func() {
+				// TODO
+			}),
+			fyne.NewMenuItem("Send Discharging Signal", func() {
+				// TODO
+			}),
+			fyne.NewMenuItem("Send Low Battery Signal", func() {
+				// TODO
+			}),
+			fyne.NewMenuItem("Send Very Low Battery Signal", func() {
+				// TODO
+			}),
+			fyne.NewMenuItem("Send Dead Battery Signal", func() {
+				// TODO
 			}),
 		),
 	)
@@ -119,10 +188,10 @@ func New() *Simulator {
 	border := canvas.NewRectangle(color.White)
 	// aspect := float32(v.width) / float32(v.height)
 	displayContainer := container.New(layout.NewCustomPaddedLayout(
+		20,
+		20,
 		25,
 		25,
-		15,
-		15,
 	),
 		container.NewStack(
 			border,
@@ -159,7 +228,7 @@ func New() *Simulator {
 	v.setupInput()
 
 	v.window.SetContent(content)
-	v.window.Resize(fyne.NewSize(84*4, 48*5+300))
+	v.window.Resize(fyne.NewSize(84*4+100, 48*5+300))
 
 	return v
 }
@@ -173,5 +242,7 @@ func (v *Simulator) Start() {
 }
 
 func (v *Simulator) Stop() {
-	v.app.Quit()
+	fyne.Do(func() {
+		v.app.Quit()
+	})
 }

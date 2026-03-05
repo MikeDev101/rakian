@@ -2,12 +2,9 @@ package menu
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
-	// "lcd"
-	// "timers"
 	"misc"
 )
 
@@ -17,9 +14,10 @@ type LowBatteryAlert struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
+	stackIndex int
 }
 
-func (m *Menu) NewLowBatteryAlert() *LowBatteryAlert {
+func (m *Menu) NewLowBatteryAlert() MenuInstance {
 	return &LowBatteryAlert{
 		parent: m,
 	}
@@ -27,14 +25,6 @@ func (m *Menu) NewLowBatteryAlert() *LowBatteryAlert {
 
 func (instance *LowBatteryAlert) Label() string {
 	return "Low Battery Alert"
-}
-
-func (instance *LowBatteryAlert) render() {
-	m := instance.parent
-	display := m.Display
-	defer display.Unlock()
-	display.Lock()
-	m.RenderAnimatedAlert("low_battery", instance.ctx, []string{"Low", "battery"})
 }
 
 func (instance *LowBatteryAlert) Configure() {
@@ -46,6 +36,38 @@ func (instance *LowBatteryAlert) Configure() {
 func (instance *LowBatteryAlert) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *LowBatteryAlert) Pause() {
+	Pause(instance)
+}
+
+func (instance *LowBatteryAlert) Stop() {
+	Stop(instance)
+}
+
+func (instance *LowBatteryAlert) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *LowBatteryAlert) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *LowBatteryAlert) Cleanup() {}
+
+func (instance *LowBatteryAlert) Save() {}
+
+func (instance *LowBatteryAlert) Load() {}
+
+func (instance *LowBatteryAlert) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *LowBatteryAlert) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *LowBatteryAlert) Run() {
@@ -79,18 +101,10 @@ func (instance *LowBatteryAlert) Run() {
 	}()
 }
 
-func (instance *LowBatteryAlert) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Low battery alert pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *LowBatteryAlert) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Low battery alert stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
+func (instance *LowBatteryAlert) render() {
+	m := instance.parent
+	display := m.Display
+	defer display.Unlock()
+	display.Lock()
+	m.RenderAnimatedAlert("low_battery", instance.ctx, []string{"Low", "battery"})
 }

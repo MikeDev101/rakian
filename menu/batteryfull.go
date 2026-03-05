@@ -2,7 +2,6 @@ package menu
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
@@ -15,9 +14,10 @@ type BatteryChargedAlert struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
+	stackIndex int
 }
 
-func (m *Menu) NewBatteryChargedAlert() *BatteryChargedAlert {
+func (m *Menu) NewBatteryChargedAlert() MenuInstance {
 	return &BatteryChargedAlert{
 		parent: m,
 	}
@@ -44,6 +44,38 @@ func (instance *BatteryChargedAlert) Configure() {
 func (instance *BatteryChargedAlert) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *BatteryChargedAlert) Pause() {
+	Pause(instance)
+}
+
+func (instance *BatteryChargedAlert) Stop() {
+	Stop(instance)
+}
+
+func (instance *BatteryChargedAlert) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *BatteryChargedAlert) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *BatteryChargedAlert) Cleanup() {}
+
+func (instance *BatteryChargedAlert) Save() {}
+
+func (instance *BatteryChargedAlert) Load() {}
+
+func (instance *BatteryChargedAlert) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *BatteryChargedAlert) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *BatteryChargedAlert) Run() {
@@ -75,20 +107,4 @@ func (instance *BatteryChargedAlert) Run() {
 			return
 		}
 	}()
-}
-
-func (instance *BatteryChargedAlert) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Battery charged alert pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *BatteryChargedAlert) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Battery charged alert stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
 }

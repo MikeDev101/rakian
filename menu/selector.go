@@ -34,6 +34,7 @@ type SelectorArgs struct {
 	ShowTitle              bool
 	ShowPathInTitle        bool
 	AppendTextToElemNumber string
+	CustomRender           func()
 }
 
 type SelectorReturn struct {
@@ -164,6 +165,9 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 			}
 		}
 
+		if args.CustomRender != nil {
+			args.CustomRender()
+		}
 		m.RenderFooter(args.ButtonLabel, true)
 		display.Render()
 	}

@@ -123,31 +123,30 @@ func main_thread(
 	display.Load_Font_Large_Bold()
 
 	// Register menus
-	menus.Register("power", menus.NewPowerMenu())
-	menus.Register("home", menus.NewHomeMenu())
-	menus.Register("home_selection", menus.NewHomeSelectionMenu())
-	menus.Register("dialer", menus.NewDialerMenu())
-	menus.Register("phone", menus.NewPhoneMenu())
-	menus.Register("ring", menus.NewRingMenu())
-	menus.Register("dummy", menus.NewDummyMenu())
-	menus.Register("screensaver", menus.NewScreensaver())
-	menus.Register("low_battery", menus.NewLowBatteryAlert())
-	menus.Register("dead_battery", menus.NewDeadBatteryAlert())
-	menus.Register("very_low_battery", menus.NewVeryLowBatteryAlert())
-	menus.Register("battery_charging", menus.NewBatteryChargingAlert())
-	menus.Register("battery_charged", menus.NewBatteryChargedAlert())
-	menus.Register("calculator", menus.NewCalculatorMenu())
-	menus.Register("settings", menus.NewSettingsMenu())
-	menus.Register("phonebook", menus.NewPhonebookMenu())
-	menus.Register("keypad_unlock", menus.NewKeypadUnlockMenu())
+	menus.Register("power", menus.NewPowerMenu)
+	menus.Register("home", menus.NewHomeMenu)
+	menus.Register("home_selection", menus.NewHomeSelectionMenu)
+	menus.Register("dialer", menus.NewDialerMenu)
+	menus.Register("phone", menus.NewPhoneMenu)
+	menus.Register("ring", menus.NewRingMenu)
+	menus.Register("dummy", menus.NewDummyMenu)
+	menus.Register("screensaver", menus.NewScreensaver)
+	menus.Register("low_battery", menus.NewLowBatteryAlert)
+	menus.Register("dead_battery", menus.NewDeadBatteryAlert)
+	menus.Register("very_low_battery", menus.NewVeryLowBatteryAlert)
+	menus.Register("battery_charging", menus.NewBatteryChargingAlert)
+	menus.Register("battery_charged", menus.NewBatteryChargedAlert)
+	menus.Register("calculator", menus.NewCalculatorMenu)
+	menus.Register("settings", menus.NewSettingsMenu)
+	menus.Register("phone_book", menus.NewPhonebookMenu)
+	menus.Register("keypad_unlock", menus.NewKeypadUnlockMenu)
 
 	// Set runtime keys
 	menus.Set("DebugMode", (debug))
 	menus.Set("FirmwareVersion", FW_VERSION)
 	menus.Set("BatteryOK", true)
-	menus.Set("BatteryVoltage", "")
-	menus.Set("BatteryPercent", 0)
-	menus.Set("BatteryScaledPercent", 0)
+	menus.Set("BatteryPercent", 100)
+	menus.Set("BatteryScaledPercent", 4)
 	menus.Set("BatteryCharging", false)
 	menus.Set("BluetoothEnabled", false)
 	menus.Set("KeypadLocked", false)
@@ -204,7 +203,11 @@ func main_thread(
 					return
 
 				case call := <-phone.Ringing():
-					go menus.ToMenuWithArgs("ring", call)
+					if len(phone.GetCalls()) == 2 {
+						// This should never happen, but if it does, just ignore it
+						continue
+					}
+					go menus.PushWithArgs("ring", call)
 					kp.KeyLightsOn()
 					menus.Timers["keypad"].Restart()
 					menus.Timers["screensaver"].Restart()
@@ -221,7 +224,7 @@ func main_thread(
 			case <-ctx.Done():
 				return
 			case <-time.After(1 * time.Second):
-				voltage, capacity, capacity_scaled, read_err := misc.GetBatteryStatus()
+				_, capacity, capacity_scaled, read_err := misc.GetBatteryStatus()
 
 				if read_err != nil {
 					menus.Set("BatteryOK", false)
@@ -231,7 +234,6 @@ func main_thread(
 				charging := misc.GetChargingStatus()
 
 				menus.Set("BatteryOK", true)
-				menus.Set("BatteryVoltage", voltage)
 				menus.Set("BatteryPercent", capacity)
 				menus.Set("BatteryScaledPercent", capacity_scaled)
 

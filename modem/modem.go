@@ -10,17 +10,28 @@ import (
 
 // Call represents an ongoing or incoming call.
 type Call struct {
+	ID        string
 	DBusPath  dbus.ObjectPath
 	Call      modemmanager.Call
 	StartTime time.Time
-	State     string
-	Number    string
-	Active    bool
+	State     modemmanager.MMCallState
+	Reason    modemmanager.MMCallStateReason
+	Mute      bool
+	Volume    float64
 	Ended     chan bool
+	Number    string
+	Announced bool
 }
 
 func (c *Call) String() string {
-	return fmt.Sprintf("%s @ %v (%s)", c.Number, time.Since(c.StartTime), c.State)
+	state := fmt.Sprintf("%s - %s @ %v (%s)", c.ID, c.Number, time.Since(c.StartTime), c.State)
+	if c.Mute {
+		state += " (mute)"
+	}
+	if c.Volume == 0 {
+		state += " (deafened)"
+	}
+	return state
 }
 
 // Modem is an interface that abstracts modem functionalities.
@@ -47,6 +58,7 @@ type Modem interface {
 	HoldCall(call *Call) error
 	UnholdCall(call *Call) error
 	SyncVoicemails()
+	GetCalls() []*Call
 
 	// Lifecycle
 	Stop()

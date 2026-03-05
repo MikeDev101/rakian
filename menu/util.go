@@ -7,6 +7,7 @@ import (
 	"image"
 	"log"
 	"time"
+	"timers"
 )
 
 const (
@@ -113,7 +114,7 @@ func (m *Menu) RenderHeader(header string) {
 	display.Fill()
 }
 
-func (instance *Menu) RenderStateCommon() {
+func (instance *Menu) RenderClock() {
 	m := instance
 	display := m.Display
 
@@ -128,6 +129,11 @@ func (instance *Menu) RenderStateCommon() {
 	// Draw clock
 	font := display.Use_Font_Tiny()
 	display.DrawTextAligned(77, 0, font, clock_str, false, gfx.AlignLeft, gfx.AlignNone)
+}
+
+func (instance *Menu) RenderStateCommon() {
+	m := instance
+	display := m.Display
 
 	// Draw icons
 	if cell_sprite, ok := display.Use_Sprites()["cell"]; ok {
@@ -197,4 +203,41 @@ func (instance *Menu) stopDTMF(key rune) {
 		return
 	}
 	instance.Player.StopDTMF(key)
+}
+
+func (instance *Menu) ExitWithAlert(ctx context.Context, msg []string) {
+	instance.RenderAlert("prohibited", msg)
+	go instance.PlayAlert()
+	timers.SleepWithContext(2*time.Second, ctx)
+	go instance.Pop()
+}
+
+func (instance *Menu) PlayRinging(ctx context.Context) {
+	// US ringback tone: 440Hz + 480Hz, 2 seconds on, 4 seconds off.
+	for {
+		// Don't play if muted
+		if instance.Get("CanRing").(bool) || instance.Get("BeepOnly").(bool) {
+			instance.Player.PlayRingback()
+		}
+
+		// Wait for 2 seconds (tone duration)
+		select {
+		case <-ctx.Done():
+			instance.Player.StopRingback()
+			return
+		case <-time.After(2 * time.Second):
+			instance.Player.StopRingback()
+		}
+
+		// Wait for 4 seconds (silence duration)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(4 * time.Second):
+		}
+	}
+}
+
+func (instance *Menu) PlayCallEnded(ctx context.Context) {
+	// TODO: play the call ended sound
 }

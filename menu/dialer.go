@@ -7,27 +7,32 @@ import (
 	"slices"
 	"sync"
 	"time"
-
-	"timers"
 )
 
-type DialerMenu struct {
-	ctx              context.Context
-	configured       bool
-	cancelFn         context.CancelFunc
-	parent           *Menu
-	wg               sync.WaitGroup
+type dialer_store struct {
 	dial_number      string
 	lastAsteriskTime time.Time
-	pressStart       map[rune]time.Time
-	initialKey       rune
 }
 
-func (m *Menu) NewDialerMenu() *DialerMenu {
+type DialerMenu struct {
+	ctx        context.Context
+	configured bool
+	cancelFn   context.CancelFunc
+	parent     *Menu
+	wg         sync.WaitGroup
+	pressStart map[rune]time.Time
+	initialKey rune
+	datastore  *dialer_store
+	stackIndex int
+}
+
+func (m *Menu) NewDialerMenu() MenuInstance {
 	return &DialerMenu{
-		parent:           m,
-		lastAsteriskTime: time.Now(),
-		pressStart:       make(map[rune]time.Time),
+		parent:     m,
+		pressStart: make(map[rune]time.Time),
+		datastore: &dialer_store{
+			lastAsteriskTime: time.Now(),
+		},
 	}
 }
 
@@ -42,7 +47,7 @@ func (instance *DialerMenu) render() {
 	display.Lock()
 	display.Clear(display.Primary())
 	m.RenderStateCommon()
-	display.DrawTextWrapped(8, 10, 80, 40, display.Use_Font_Large_Bold(), instance.dial_number, false, gfx.WrapRight, gfx.WrapUp)
+	display.DrawTextWrapped(8, 10, 78, 38, display.Use_Font_Large_Bold(), instance.datastore.dial_number, false, gfx.WrapRight, gfx.WrapUp)
 	m.RenderFooter("Dial", true)
 	display.Render()
 }
@@ -70,11 +75,11 @@ func (instance *DialerMenu) Run() {
 
 	if instance.initialKey != 0 {
 		key := instance.initialKey
-		instance.dial_number = string(key)
+		instance.datastore.dial_number = string(key)
 		instance.initialKey = 0
 		go m.playDTMF(key)
 		if key == '*' {
-			instance.lastAsteriskTime = time.Now()
+			instance.datastore.lastAsteriskTime = time.Now()
 		}
 	}
 	instance.render()
@@ -97,28 +102,28 @@ func (instance *DialerMenu) Run() {
 				case '*':
 					go m.playDTMF('*')
 					now := time.Now()
-					if now.Sub(instance.lastAsteriskTime) <= 750*time.Millisecond {
+					if now.Sub(instance.datastore.lastAsteriskTime) <= 750*time.Millisecond {
 						// Replace last '*' with '+'
-						runes := []rune(instance.dial_number)
+						runes := []rune(instance.datastore.dial_number)
 						if len(runes) > 0 && runes[len(runes)-1] == '*' {
 							runes[len(runes)-1] = '+'
-							instance.dial_number = string(runes)
+							instance.datastore.dial_number = string(runes)
 						} else {
-							instance.dial_number += "*"
+							instance.datastore.dial_number += "*"
 						}
 					} else {
-						instance.dial_number += "*"
+						instance.datastore.dial_number += "*"
 					}
-					instance.lastAsteriskTime = now
+					instance.datastore.lastAsteriskTime = now
 					instance.render()
 
 				case 'C':
 					go m.PlayKey()
 
 					// Delete last key from dial_number
-					runes := []rune(instance.dial_number)
+					runes := []rune(instance.datastore.dial_number)
 					if len(runes) > 0 {
-						instance.dial_number = string(runes[:len(runes)-1])
+						instance.datastore.dial_number = string(runes[:len(runes)-1])
 					}
 
 					// Check if
@@ -139,34 +144,35 @@ func (instance *DialerMenu) Run() {
 				case 'D':
 					go m.PlayKey()
 				case 'S':
-					if len(instance.dial_number) == 0 {
+					if len(instance.datastore.dial_number) == 0 {
 						continue
 					}
 
 					if !m.Phone.OK() {
-						instance.ExitWithAlert([]string{"No", "service"})
+						m.ExitWithAlert(instance.ctx, []string{"No", "service"})
 						return
 					}
 
 					if m.Phone.IsFlightMode() {
-						instance.ExitWithAlert([]string{"Flight", "mode", "enabled"})
+						m.ExitWithAlert(instance.ctx, []string{"Flight", "mode", "enabled"})
 						return
 					}
 
 					if !m.Phone.IsRegistered() {
-						instance.ExitWithAlert([]string{"No", "service"})
+						m.ExitWithAlert(instance.ctx, []string{"No", "service"})
 						return
 					}
 
 					// Ignore registration if the number is in the service/emergency numbers list
-					if slices.Contains(m.Phone.GetEmergencyNumbers(), instance.dial_number) {
+					if slices.Contains(m.Phone.GetEmergencyNumbers(), instance.datastore.dial_number) {
 						m.RenderAlert("", []string{"Attempting", "emergency", "call"})
 						go m.PlayAlert()
 
 						time.Sleep(3 * time.Second)
 
-						session, err := m.Phone.PlaceCall(instance.dial_number)
+						session, err := m.Phone.PlaceCall(instance.datastore.dial_number)
 						if err != nil {
+							log.Printf("⚠️ Failed to place call: %v", err)
 							m.RenderAlert("prohibited", []string{"Call", "failed"})
 							go m.PlayAlert()
 							time.Sleep(3 * time.Second)
@@ -174,17 +180,23 @@ func (instance *DialerMenu) Run() {
 							return
 						}
 
-						go m.ToMenuWithArgs("phone", session)
+						idx := instance.GetStackIndex()
+						if idx > 0 && m.GetMenuKeyAt(idx-1) == "phone" {
+							go m.PopWithArgs(session)
+						} else {
+							go m.ToMenuWithArgs("phone", session)
+						}
 						return
 					}
 
 					if !m.Phone.IsRegistered() {
-						instance.ExitWithAlert([]string{"No", "service!"})
+						m.ExitWithAlert(instance.ctx, []string{"No", "service!"})
 						return
 					}
 
-					session, err := m.Phone.PlaceCall(instance.dial_number)
+					session, err := m.Phone.PlaceCall(instance.datastore.dial_number)
 					if err != nil {
+						log.Printf("⚠️ Failed to place call: %v", err)
 						m.RenderAlert("prohibited", []string{"Call", "failed"})
 						go m.PlayAlert()
 						time.Sleep(3 * time.Second)
@@ -192,15 +204,21 @@ func (instance *DialerMenu) Run() {
 						return
 					}
 
-					go m.ToMenuWithArgs("phone", session)
+					idx := instance.GetStackIndex()
+					if idx > 0 && m.GetMenuKeyAt(idx-1) == "phone" {
+						go m.PopWithArgs(session)
+					} else {
+						go m.ToMenuWithArgs("phone", session)
+					}
 					return
 
 				default:
-					if len(instance.dial_number) < 18 {
-						instance.dial_number += string(evt.Key)
+					if len(instance.datastore.dial_number) < 16 {
+						instance.datastore.dial_number += string(evt.Key)
 						instance.render()
+						go m.playDTMF(evt.Key)
 					}
-					go m.playDTMF(evt.Key)
+
 				}
 			} else { // Key Release
 				go m.stopDTMF(evt.Key)
@@ -210,32 +228,42 @@ func (instance *DialerMenu) Run() {
 }
 
 func (instance *DialerMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Dialer menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
+	Pause(instance)
 }
 
 func (instance *DialerMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Dialer menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		instance.cleanup()
+	Stop(instance)
+}
+
+func (instance *DialerMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
 	}
 }
 
-func (instance *DialerMenu) cleanup() {
-	instance.dial_number = ""
-	instance.pressStart = make(map[rune]time.Time)
-	instance.initialKey = 0
+func (instance *DialerMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
 }
 
-func (instance *DialerMenu) ExitWithAlert(msg []string) {
-	instance.parent.RenderAlert("prohibited", msg)
-	go instance.parent.PlayAlert()
-	timers.SleepWithContext(2*time.Second, instance.ctx)
-	go instance.parent.Pop()
+func (instance *DialerMenu) Cleanup() {
+	instance.datastore.dial_number = ""
+	instance.datastore.lastAsteriskTime = time.Time{}
+}
+
+func (instance *DialerMenu) Save() {
+	Save(instance.parent, instance, instance.datastore)
+}
+
+func (instance *DialerMenu) Load() {
+	if loaded, ok := Load(instance.parent, instance); ok {
+		instance.datastore = loaded.(*dialer_store)
+	}
+}
+
+func (instance *DialerMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *DialerMenu) GetStackIndex() int {
+	return instance.stackIndex
 }

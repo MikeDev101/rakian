@@ -21,6 +21,7 @@ type Tones struct {
 	ctx         *oto.Context
 	tonePlayer  *oto.Player
 	dtmfPlayers map[rune]*oto.Player
+	ringbackPlayer *oto.Player
 	mu          sync.Mutex
 }
 
@@ -164,6 +165,10 @@ func (t *Tones) Stop() {
 	for key, player := range t.dtmfPlayers {
 		player.SetVolume(0)
 		delete(t.dtmfPlayers, key)
+	}
+	if t.ringbackPlayer != nil {
+		t.ringbackPlayer.SetVolume(0)
+		t.ringbackPlayer = nil
 	}
 }
 
@@ -326,6 +331,38 @@ func (t *Tones) StopDTMF(key rune) {
 	if player, ok := t.dtmfPlayers[key]; ok {
 		player.SetVolume(0)
 		delete(t.dtmfPlayers, key)
+	}
+}
+
+func (t *Tones) PlayRingback() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.ringbackPlayer != nil {
+		return // Already playing
+	}
+
+	src := &DTMFWave{ // Reusing DTMFWave as it generates two sine waves
+		f1:     440, // US Ringback tone freq 1
+		f2:     480, // US Ringback tone freq 2
+		pos:    0,
+		volume: 0.5, // 50% volume to avoid clipping
+	}
+
+	player := t.ctx.NewPlayer(src)
+	player.SetVolume(1)
+	player.Play()
+
+	t.ringbackPlayer = player
+}
+
+func (t *Tones) StopRingback() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.ringbackPlayer != nil {
+		t.ringbackPlayer.SetVolume(0)
+		t.ringbackPlayer = nil
 	}
 }
 

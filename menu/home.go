@@ -2,7 +2,6 @@ package menu
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
@@ -19,9 +18,10 @@ type HomeMenu struct {
 	batt_flash  bool
 	data_flash  bool
 	render_loop *timers.ResettableTimer
+	stackIndex  int
 }
 
-func (m *Menu) NewHomeMenu() *HomeMenu {
+func (m *Menu) NewHomeMenu() MenuInstance {
 	return &HomeMenu{
 		parent: m,
 	}
@@ -29,45 +29,6 @@ func (m *Menu) NewHomeMenu() *HomeMenu {
 
 func (instance *HomeMenu) Label() string {
 	return "Home Menu"
-}
-
-func (instance *HomeMenu) render() {
-	m := instance.parent
-	display := m.Display
-
-	defer display.Unlock()
-	display.Lock()
-
-	display.Clear(display.Primary())
-	m.RenderStateCommon()
-
-	if m.Phone.OK() {
-		if m.Phone.IsSOS() {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "SOS", false, gfx.AlignCenter, gfx.AlignBelow)
-		} else if m.Phone.IsFlightMode() {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, gfx.AlignCenter, gfx.AlignBelow)
-		} else {
-			font := display.Use_Font_Small_Bold()
-			if m.Phone.GetCarrier() == "No service" {
-				font = display.Use_Font_Small_Plain()
-			}
-			display.DrawTextAligned(42, 8, font, m.Phone.GetCarrier(), false, gfx.AlignCenter, gfx.AlignBelow)
-		}
-
-		if m.Phone.IsRoaming() {
-			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, gfx.AlignCenter, gfx.AlignBelow)
-		}
-	} else {
-		display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Modem error", false, gfx.AlignCenter, gfx.AlignBelow)
-	}
-
-	if m.Get("KeypadLocked").(bool) {
-		m.RenderFooter("Unlock", true)
-	} else {
-		m.RenderFooter("Menu", true)
-	}
-
-	display.Render()
 }
 
 func (instance *HomeMenu) Configure() {
@@ -79,6 +40,77 @@ func (instance *HomeMenu) Configure() {
 func (instance *HomeMenu) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *HomeMenu) Pause() {
+	Pause(instance)
+}
+
+func (instance *HomeMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *HomeMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *HomeMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *HomeMenu) Cleanup() {}
+
+func (instance *HomeMenu) Save() {}
+
+func (instance *HomeMenu) Load() {}
+
+func (instance *HomeMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *HomeMenu) GetStackIndex() int {
+	return instance.stackIndex
+}
+
+func (instance *HomeMenu) render() {
+	m := instance.parent
+	display := m.Display
+
+	defer display.Unlock()
+	display.Lock()
+
+	display.Clear(display.Primary())
+	m.RenderStateCommon()
+	m.RenderClock()
+
+	if m.Phone.OK() {
+		if m.Phone.IsSOS() {
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "SOS", false, gfx.AlignCenter, gfx.AlignBelow)
+		} else if m.Phone.IsFlightMode() {
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, gfx.AlignCenter, gfx.AlignBelow)
+		} else if !m.Phone.IsRegistered() {
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Bold(), "No service", false, gfx.AlignCenter, gfx.AlignBelow)
+		} else {
+			display.DrawTextAligned(42, 8, display.Use_Font_Small_Bold(), m.Phone.GetCarrier(), false, gfx.AlignCenter, gfx.AlignBelow)
+		}
+
+		if m.Phone.IsRoaming() {
+			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, gfx.AlignCenter, gfx.AlignBelow)
+		}
+	} else {
+		display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Modem error", false, gfx.AlignCenter, gfx.AlignBelow)
+	}
+
+	if m.Get("KeypadLocked").(bool) {
+		display.DrawImageAligned(display.Use_Sprites()["keypad_locked"], 8, 0, gfx.AlignRight, gfx.AlignBelow)
+		m.RenderFooter("Unlock", true)
+	} else {
+		m.RenderFooter("Menu", true)
+	}
+
+	display.Render()
 }
 
 func (instance *HomeMenu) Run() {
@@ -172,20 +204,4 @@ func (instance *HomeMenu) Run() {
 			}
 		}
 	}()
-}
-
-func (instance *HomeMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Home menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *HomeMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Home menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
 }

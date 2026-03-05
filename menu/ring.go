@@ -21,10 +21,13 @@ type RingMenu struct {
 	batt_flash  bool
 	data_flash  bool
 	render_loop *timers.ResettableTimer
+	ring_tstamp time.Time
+	ring_shown  bool
 	call        *modem.Call
+	stackIndex  int
 }
 
-func (m *Menu) NewRingMenu() *RingMenu {
+func (m *Menu) NewRingMenu() MenuInstance {
 	return &RingMenu{
 		parent: m,
 	}
@@ -32,22 +35,6 @@ func (m *Menu) NewRingMenu() *RingMenu {
 
 func (instance *RingMenu) Label() string {
 	return "Ring Menu"
-}
-
-func (instance *RingMenu) render() {
-	m := instance.parent
-	display := m.Display
-
-	defer display.Unlock()
-	display.Lock()
-
-	display.Clear(display.Primary())
-	m.RenderStateCommon()
-
-	display.DrawTextAligned(8, 10, display.Use_Font_Small_Bold(), instance.call.Number, false, gfx.AlignNone, gfx.AlignNone)
-
-	m.RenderFooter("Answer", true)
-	display.Render()
 }
 
 func (instance *RingMenu) Configure() {
@@ -68,6 +55,41 @@ func (instance *RingMenu) ConfigureWithArgs(args ...any) {
 	instance.Configure()
 }
 
+func (instance *RingMenu) Pause() {
+	Pause(instance)
+}
+
+func (instance *RingMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *RingMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *RingMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *RingMenu) Cleanup() {
+	instance.parent.Timers["keypad"].Restart()
+	instance.parent.Timers["screensaver"].Restart()
+}
+
+func (instance *RingMenu) Save() {}
+
+func (instance *RingMenu) Load() {}
+
+func (instance *RingMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *RingMenu) GetStackIndex() int {
+	return instance.stackIndex
+}
+
 func (instance *RingMenu) Run() {
 	m := instance.parent
 	if !instance.configured {
@@ -77,6 +99,10 @@ func (instance *RingMenu) Run() {
 	if instance.call == nil {
 		panic("Attempted to call (*RingMenu).Run() without a call!")
 	}
+
+	// Disable screensaver
+	go m.Timers["screensaver"].Stop()
+	m.Keypad.KeyLightsOn()
 
 	if m.Get("BeepOnly").(bool) {
 		instance.wg.Go(func() {
@@ -124,7 +150,7 @@ func (instance *RingMenu) Run() {
 				return
 
 			case <-instance.call.Ended:
-				go m.ToStart()
+				go m.Pop()
 				return
 
 			case evt, ok := <-m.KeypadEvents:
@@ -134,8 +160,6 @@ func (instance *RingMenu) Run() {
 
 				if evt.State {
 					m.Timers["keypad"].Reset()
-					m.Timers["screensaver"].Reset()
-					m.Display.On()
 					m.Keypad.KeyLightsOn()
 					switch evt.Key {
 					case 'S':
@@ -143,9 +167,14 @@ func (instance *RingMenu) Run() {
 						if m.Phone.OK() {
 							res := m.Phone.AnswerCall(instance.call)
 							if res != nil {
-								log.Printf("⚠️ Failed to answer call: %v", res)
+								log.Printf("⚠️  Failed to answer call: %v", res)
 							} else {
-								go m.ToMenuWithArgs("phone", instance.call)
+								idx := instance.GetStackIndex()
+								if idx > 0 && m.GetMenuKeyAt(idx-1) == "phone" {
+									go m.PopWithArgs(instance.call)
+								} else {
+									go m.ToMenuWithArgs("phone", instance.call)
+								}
 								return
 							}
 						}
@@ -156,7 +185,7 @@ func (instance *RingMenu) Run() {
 							if res != nil {
 								log.Printf("⚠️ Failed to hang up call: %v", res)
 							} else {
-								go m.ToStart()
+								go m.Pop()
 								return
 							}
 						}
@@ -167,18 +196,27 @@ func (instance *RingMenu) Run() {
 	})
 }
 
-func (instance *RingMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Ring menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
+func (instance *RingMenu) render() {
+	m := instance.parent
+	display := m.Display
 
-func (instance *RingMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Ring menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
+	defer display.Unlock()
+	display.Lock()
+
+	display.Clear(display.Primary())
+	m.RenderStateCommon()
+
+	display.DrawTextWrapped(8, 8, 78, 16, display.Use_Font_Small_Plain(), instance.call.Number, false, gfx.WrapRight, gfx.WrapUp)
+
+	if time.Since(instance.ring_tstamp) > 500*time.Millisecond {
+		instance.ring_tstamp = time.Now()
+		instance.ring_shown = !instance.ring_shown
 	}
+
+	if instance.ring_shown {
+		display.DrawTextAligned(8, 38, display.Use_Font_Small_Bold(), "calling", false, gfx.AlignNone, gfx.AlignAbove)
+	}
+
+	m.RenderFooter("Answer", true)
+	display.Render()
 }

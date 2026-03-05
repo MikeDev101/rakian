@@ -17,21 +17,92 @@ import (
 	"tones"
 
 	"github.com/Wifx/gonetworkmanager/v3"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
+type MenuData any
+
 type MenuInstance interface {
-	Run()                     // Starts the menu.
-	Pause()                   // Exits the menu while retaining state, and can be resumed with Run().
-	Stop()                    // Exits the menu and destroys any existing state.
-	Configure()               // Required to be called before using Run(). Otherwise, a panic will occur.
-	ConfigureWithArgs(...any) // Can be called anytime to passthrough arguments.
-	Label() string
+	Run()                       // Starts the menu.
+	Pause()                     // Exits the menu while retaining state, and can be resumed with Run().
+	Stop()                      // Exits the menu and destroys any existing state.
+	Configure()                 // Required to be called before using Run(). Otherwise, a panic will occur.
+	ConfigureWithArgs(...any)   // Can be called anytime to passthrough arguments.
+	Label() string              // Provides a programmer-friendly way to identify the running instance.
+	Cancel()                    // Prepares the instance to either be destroyed or paused.
+	WaitGroup() *sync.WaitGroup // Passes through the instance's waitgroup. Yep.
+	Cleanup()                   // Destroys the instance's state data, allowing a new instance to spawn fresh.
+	Save()                      // Saves the instance's state data for reuse in a new instance.
+	Load()                      // Restores a previous state for an instance.
+	SetStackIndex(int)          // Sets the instance's position in the stack.
+	GetStackIndex() int         // Gets the instance's position in the stack.
+}
+
+// Save stores the given data into the parent's datastores under the given instance's label.
+// This allows the instance to be recreated with the same state data.
+// i must be a valid MenuInstance.
+// data can be any type that can be stored in the parent's datastores.
+func Save(parent *Menu, i MenuInstance, data any) {
+	log.Printf("💾  Saving %s", i.Label())
+	parent.DataStores.Store(i.Label(), data)
+}
+
+// Loads the state data for the given instance from the parent's datastores.
+// If the state data exists and is valid, it will be loaded into the instance.
+// Returns the loaded data if successful, and a boolean indicating success.
+// If the state data does not exist or is invalid, it will return nil and false.
+func Load(parent *Menu, i MenuInstance) (any, bool) {
+	log.Printf("💾  Loading %s", i.Label())
+	if val, ok := parent.DataStores.Load(i.Label()); ok {
+		return val, true
+	}
+	return nil, false
+}
+
+// Stops the given menu instance and destroys any existing state data.
+// If the instance fails to exit within 1 second, it will be logged as a timeout.
+// If the timeout occurs, the instance will not be cleaned up, and goroutines may be stuck.
+// TODO: reap stuck goroutines.
+func Stop(i MenuInstance) {
+	log.Printf("🛑  Stopping %s", i.Label())
+	i.Cancel()
+	if ok := waitWithTimeout(i.WaitGroup(), 1*time.Second); !ok {
+		log.Printf("⚠️ %s stop timed out — goroutines may be stuck", i.Label())
+		// TODO: reap
+	} else {
+		i.Cleanup()
+		log.Printf("🛑  %s stopped", i.Label())
+	}
+}
+
+// Pause the given menu instance and destroys any existing state data.
+// If the instance fails to exit within 1 second, it will be logged as a timeout.
+// If the timeout occurs, the instance will not be cleaned up, and goroutines may be stuck.
+// TODO: reap stuck goroutines.
+func Pause(i MenuInstance) {
+	log.Printf("⏸️  Pausing %s", i.Label())
+	i.Cancel()
+	if ok := waitWithTimeout(i.WaitGroup(), 1*time.Second); !ok {
+		log.Printf("⚠️ %s pause timed out — goroutines may be stuck", i.Label())
+		// TODO: reap
+	} else {
+		i.Save()
+		i.Cleanup()
+		log.Printf("⏸️  %s paused", i.Label())
+	}
+}
+
+type StackEntry struct {
+	Name string
+	ID   uuid.UUID
+	Menu MenuInstance
 }
 
 type Menu struct {
-	Stack         []MenuInstance
-	Menus         map[string]MenuInstance
+	Stack         []StackEntry
+	Menus         map[string]func() MenuInstance
+	DataStores    sync.Map
 	CurrentMenu   MenuInstance
 	GlobalContext context.Context
 	GlobalCancel  context.CancelFunc
@@ -64,15 +135,29 @@ func (m *Menu) Mask() {
 	m.masked = true
 }
 
-func (m *Menu) ontop(menu string) bool {
+func (m *Menu) IsTop(menu string) bool {
 	if len(m.Stack) == 0 {
 		return false
 	}
-	return m.Stack[len(m.Stack)-1] == m.Menus[menu]
+	return m.Stack[len(m.Stack)-1].Name == menu
 }
 
 func (m *Menu) instack(menu string) bool {
-	return slices.Contains(m.Stack, m.Menus[menu])
+	for _, entry := range m.Stack {
+		if entry.Name == menu {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Menu) GetMenuKeyAt(index int) string {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	if index < 0 || index >= len(m.Stack) {
+		return ""
+	}
+	return m.Stack[index].Name
 }
 
 // Run the menu at the given index in the stack.
@@ -80,10 +165,10 @@ func (m *Menu) instack(menu string) bool {
 // If the menu is not running, set the current menu to the given menu and run it in a goroutine.
 // If the menu crashes with a panic, stop the player and render an alert to the user before returning to the home screen.
 func (m *Menu) run(index int) {
-	if m.CurrentMenu == m.Stack[index] {
+	if m.CurrentMenu == m.Stack[index].Menu {
 		return
 	}
-	m.CurrentMenu = m.Stack[index]
+	m.CurrentMenu = m.Stack[index].Menu
 
 	go func() {
 		defer func() {
@@ -100,6 +185,7 @@ func (m *Menu) run(index int) {
 			}
 		}()
 
+		log.Println("🏃 Running menu:", m.CurrentMenu.Label())
 		m.CurrentMenu.Run()
 	}()
 }
@@ -114,9 +200,9 @@ func (m *Menu) ToStart() {
 		return
 	}
 
-	m.Stack[0].Configure()
+	m.Stack[0].Menu.Configure()
 	for len(m.Stack) > 1 {
-		m.Stack[len(m.Stack)-1].Stop()
+		m.Stack[len(m.Stack)-1].Menu.Stop()
 		m.Stack = m.Stack[:len(m.Stack)-1]
 	}
 	m.run(0)
@@ -136,16 +222,18 @@ func (m *Menu) ToMenu(menu string) {
 		return
 	}
 
-	target := m.Menus[menu]
-	if target == nil {
+	generator, ok := m.Menus[menu]
+	if !ok {
 		log.Println("Menu not found:", menu)
 		return
 	}
+	target := generator()
 	target.Configure()
+	target.SetStackIndex(len(m.Stack))
 	if len(m.Stack) > 0 {
-		m.Stack[len(m.Stack)-1].Stop()
+		m.Stack[len(m.Stack)-1].Menu.Stop()
 	}
-	m.Stack = append(m.Stack, target)
+	m.Stack = append(m.Stack, StackEntry{Name: menu, Menu: target})
 	log.Println("Navigating to menu:", menu)
 	m.run(len(m.Stack) - 1)
 }
@@ -165,17 +253,19 @@ func (m *Menu) PopToMenu(menu string) {
 		return
 	}
 
-	target := m.Menus[menu]
-	if target == nil {
+	generator, ok := m.Menus[menu]
+	if !ok {
 		log.Println("Menu not found:", menu)
 		return
 	}
+	target := generator()
 	target.Configure()
+	target.SetStackIndex(len(m.Stack) - 1)
 	if len(m.Stack) > 0 {
-		m.Stack[len(m.Stack)-1].Stop()
+		m.Stack[len(m.Stack)-1].Menu.Stop()
 	}
 	m.Stack = m.Stack[:len(m.Stack)-1]
-	m.Stack = append(m.Stack, target)
+	m.Stack = append(m.Stack, StackEntry{Name: menu, Menu: target})
 	log.Println("Popping to menu:", menu)
 	m.run(len(m.Stack) - 1)
 }
@@ -190,15 +280,17 @@ func (m *Menu) ToMenuWithArgs(menu string, args ...any) {
 		return
 	}
 
-	target := m.Menus[menu]
-	if target == nil {
+	generator, ok := m.Menus[menu]
+	if !ok {
 		return
 	}
+	target := generator()
 	target.ConfigureWithArgs(args...)
+	target.SetStackIndex(len(m.Stack))
 	if len(m.Stack) > 0 {
-		m.Stack[len(m.Stack)-1].Stop()
+		m.Stack[len(m.Stack)-1].Menu.Stop()
 	}
-	m.Stack = append(m.Stack, target)
+	m.Stack = append(m.Stack, StackEntry{Name: menu, Menu: target})
 	m.run(len(m.Stack) - 1)
 }
 
@@ -210,16 +302,18 @@ func (m *Menu) PopToMenuWithArgs(menu string, args ...any) {
 		return
 	}
 
-	target := m.Menus[menu]
-	if target == nil {
+	generator, ok := m.Menus[menu]
+	if !ok {
 		return
 	}
+	target := generator()
 	target.ConfigureWithArgs(args...)
+	target.SetStackIndex(len(m.Stack) - 1)
 	if len(m.Stack) > 0 {
-		m.Stack[len(m.Stack)-1].Stop()
+		m.Stack[len(m.Stack)-1].Menu.Stop()
 	}
 	m.Stack = m.Stack[:len(m.Stack)-1]
-	m.Stack = append(m.Stack, target)
+	m.Stack = append(m.Stack, StackEntry{Name: menu, Menu: target})
 	m.run(len(m.Stack) - 1)
 }
 
@@ -233,15 +327,17 @@ func (m *Menu) Push(menu string) {
 		return
 	}
 
-	target := m.Menus[menu]
-	if target == nil {
+	generator, ok := m.Menus[menu]
+	if !ok {
 		return
 	}
+	target := generator()
 	target.Configure()
+	target.SetStackIndex(len(m.Stack))
 	if m.CurrentMenu != nil {
 		m.CurrentMenu.Pause()
 	}
-	m.Stack = append(m.Stack, target)
+	m.Stack = append(m.Stack, StackEntry{Name: menu, Menu: target})
 	log.Println("Pushing menu:", menu)
 	m.run(len(m.Stack) - 1)
 }
@@ -256,15 +352,17 @@ func (m *Menu) PushWithArgs(menu string, args ...any) {
 		return
 	}
 
-	target := m.Menus[menu]
-	if target == nil {
+	generator, ok := m.Menus[menu]
+	if !ok {
 		return
 	}
+	target := generator()
 	target.ConfigureWithArgs(args...)
+	target.SetStackIndex(len(m.Stack))
 	if m.CurrentMenu != nil {
 		m.CurrentMenu.Pause()
 	}
-	m.Stack = append(m.Stack, target)
+	m.Stack = append(m.Stack, StackEntry{Name: menu, Menu: target})
 	log.Println("Pushing menu with args:", menu)
 	m.run(len(m.Stack) - 1)
 }
@@ -285,11 +383,11 @@ func (m *Menu) Pop() {
 
 	// Pre-configure the next menu if it exists
 	if len(m.Stack) > 1 {
-		m.Stack[len(m.Stack)-2].Configure()
+		m.Stack[len(m.Stack)-2].Menu.Configure()
 	}
 
 	// Stop the current menu
-	m.Stack[len(m.Stack)-1].Stop()
+	m.Stack[len(m.Stack)-1].Menu.Stop()
 
 	// Pop the current menu
 	m.Stack = m.Stack[:len(m.Stack)-1]
@@ -321,11 +419,11 @@ func (m *Menu) PopWithArgs(args ...any) {
 
 	// Pre-configure the next menu if it exists
 	if len(m.Stack) > 1 {
-		m.Stack[len(m.Stack)-2].ConfigureWithArgs(args...)
+		m.Stack[len(m.Stack)-2].Menu.ConfigureWithArgs(args...)
 	}
 
 	// Stop the current menu
-	m.Stack[len(m.Stack)-1].Stop()
+	m.Stack[len(m.Stack)-1].Menu.Stop()
 
 	// Pop the current menu
 	m.Stack = m.Stack[:len(m.Stack)-1]
@@ -411,13 +509,13 @@ func (m *Menu) SyncPersistent() {
 
 }
 
-func (m *Menu) Register(name string, instance MenuInstance) {
+func (m *Menu) Register(name string, generator func() MenuInstance) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if m.Menus == nil {
-		m.Menus = make(map[string]MenuInstance)
+		m.Menus = make(map[string]func() MenuInstance)
 	}
-	m.Menus[name] = instance
+	m.Menus[name] = generator
 }
 
 func (m *Menu) Shutdown() {
@@ -425,7 +523,7 @@ func (m *Menu) Shutdown() {
 	defer m.lock.Unlock()
 
 	for _, menu := range m.Stack {
-		menu.Stop()
+		menu.Menu.Stop()
 	}
 	for _, timer := range m.Timers {
 		timer.Stop()

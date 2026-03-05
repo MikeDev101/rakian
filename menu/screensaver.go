@@ -17,9 +17,10 @@ type Screensaver struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
+	stackIndex int
 }
 
-func (m *Menu) NewScreensaver() *Screensaver {
+func (m *Menu) NewScreensaver() MenuInstance {
 	return &Screensaver{
 		parent: m,
 	}
@@ -27,37 +28,6 @@ func (m *Menu) NewScreensaver() *Screensaver {
 
 func (instance *Screensaver) Label() string {
 	return "Screensaver"
-}
-
-func (instance *Screensaver) render() {
-	display := instance.parent.Display
-	display.Clear(display.Primary())
-	font := display.Use_Font_Large_Bold()
-
-	// Draw something
-	// Read clock
-	now := time.Now().In(time.Local)
-	am_pm := "AM"
-	if now.Hour() >= 12 {
-		am_pm = "PM"
-	}
-	hour := now.Hour() % 12
-	if hour == 0 {
-		hour = 12
-	}
-
-	// Print clock
-	clock_str := fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm)
-
-	// Trim leading spaces
-	for clock_str[0] == ' ' {
-		clock_str = clock_str[1:]
-	}
-
-	// Draw clock
-	display.DrawTextAligned(42, 24, font, clock_str, false, gfx.AlignCenter, gfx.AlignCenter)
-
-	display.Render()
 }
 
 func (instance *Screensaver) Configure() {
@@ -69,6 +39,40 @@ func (instance *Screensaver) Configure() {
 func (instance *Screensaver) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *Screensaver) Pause() {
+	Pause(instance)
+}
+
+func (instance *Screensaver) Stop() {
+	Stop(instance)
+}
+
+func (instance *Screensaver) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *Screensaver) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *Screensaver) Cleanup() {
+	instance.running = false
+}
+
+func (instance *Screensaver) Save() {}
+
+func (instance *Screensaver) Load() {}
+
+func (instance *Screensaver) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *Screensaver) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *Screensaver) Run() {
@@ -144,28 +148,33 @@ func (instance *Screensaver) Run() {
 	}()
 }
 
-func (instance *Screensaver) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Screensaver pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		instance.running = false
+func (instance *Screensaver) render() {
+	display := instance.parent.Display
+	display.Clear(display.Primary())
+	font := display.Use_Font_Large_Bold()
+
+	// Draw something
+	// Read clock
+	now := time.Now().In(time.Local)
+	am_pm := "AM"
+	if now.Hour() >= 12 {
+		am_pm = "PM"
 	}
-}
-
-func (instance *Screensaver) Stop() {
-	instance.cancelFn()
-
-	// Switch modem mode
-	// if instance.parent.Modem != nil {
-	// 	instance.parent.Modem.SwitchToNormalMode()
-	//}
-
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Screensaver stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		instance.running = false
+	hour := now.Hour() % 12
+	if hour == 0 {
+		hour = 12
 	}
+
+	// Print clock
+	clock_str := fmt.Sprintf("%2d:%02d %s", hour, now.Minute(), am_pm)
+
+	// Trim leading spaces
+	for clock_str[0] == ' ' {
+		clock_str = clock_str[1:]
+	}
+
+	// Draw clock
+	display.DrawTextAligned(42, 24, font, clock_str, false, gfx.AlignCenter, gfx.AlignCenter)
+
+	display.Render()
 }

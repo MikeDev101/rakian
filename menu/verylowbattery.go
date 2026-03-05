@@ -2,13 +2,12 @@ package menu
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
-	// "lcd"
-	// "timers"
 	"misc"
+
+	"github.com/google/uuid"
 )
 
 type VeryLowBatteryAlert struct {
@@ -17,24 +16,19 @@ type VeryLowBatteryAlert struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
+	id         uuid.UUID
+	stackIndex int
 }
 
-func (m *Menu) NewVeryLowBatteryAlert() *VeryLowBatteryAlert {
+func (m *Menu) NewVeryLowBatteryAlert() MenuInstance {
 	return &VeryLowBatteryAlert{
 		parent: m,
+		id:     uuid.New(),
 	}
 }
 
 func (instance *VeryLowBatteryAlert) Label() string {
 	return "Very Low Battery Alert"
-}
-
-func (instance *VeryLowBatteryAlert) render() {
-	m := instance.parent
-	display := m.Display
-	defer display.Unlock()
-	display.Lock()
-	m.RenderAnimatedAlert("very_low_battery", instance.ctx, []string{"Please", "recharge", "soon"})
 }
 
 func (instance *VeryLowBatteryAlert) Configure() {
@@ -46,6 +40,38 @@ func (instance *VeryLowBatteryAlert) Configure() {
 func (instance *VeryLowBatteryAlert) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *VeryLowBatteryAlert) Pause() {
+	Pause(instance)
+}
+
+func (instance *VeryLowBatteryAlert) Stop() {
+	Stop(instance)
+}
+
+func (instance *VeryLowBatteryAlert) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *VeryLowBatteryAlert) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *VeryLowBatteryAlert) Cleanup() {}
+
+func (instance *VeryLowBatteryAlert) Save() {}
+
+func (instance *VeryLowBatteryAlert) Load() {}
+
+func (instance *VeryLowBatteryAlert) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *VeryLowBatteryAlert) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *VeryLowBatteryAlert) Run() {
@@ -79,18 +105,10 @@ func (instance *VeryLowBatteryAlert) Run() {
 	}()
 }
 
-func (instance *VeryLowBatteryAlert) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Very low battery alert pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *VeryLowBatteryAlert) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Very low battery alert stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
+func (instance *VeryLowBatteryAlert) render() {
+	m := instance.parent
+	display := m.Display
+	defer display.Unlock()
+	display.Lock()
+	m.RenderAnimatedAlert("very_low_battery", instance.ctx, []string{"Please", "recharge", "soon"})
 }

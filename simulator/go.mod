@@ -14,6 +14,8 @@ require (
 	fyne.io/fyne/v2 v2.7.3
 	gfx v0.0.0-00010101000000-000000000000
 	github.com/fogleman/gg v1.3.0
+	github.com/google/uuid v1.6.0
+	github.com/maltegrosse/go-modemmanager v0.1.4
 	keypad v0.0.0-00010101000000-000000000000
 	modem v0.0.0-00010101000000-000000000000
 )
@@ -39,7 +41,6 @@ require (
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/maltegrosse/go-modemmanager v0.1.4 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.6.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

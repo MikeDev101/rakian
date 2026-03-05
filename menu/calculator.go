@@ -10,26 +10,274 @@ import (
 	"time"
 )
 
-type CalculatorMenu struct {
-	ctx              context.Context
-	configured       bool
-	cancelFn         context.CancelFunc
-	parent           *Menu
-	wg               sync.WaitGroup
+type calculator_store struct {
 	calc_input       []rune
 	calc_displayed   string
 	lastAsteriskTime time.Time
 }
 
-func (m *Menu) NewCalculatorMenu() *CalculatorMenu {
+type CalculatorMenu struct {
+	ctx        context.Context
+	configured bool
+	cancelFn   context.CancelFunc
+	parent     *Menu
+	wg         sync.WaitGroup
+	datastore  *calculator_store
+	stackIndex int
+}
+
+func (m *Menu) NewCalculatorMenu() MenuInstance {
 	return &CalculatorMenu{
-		parent:           m,
-		lastAsteriskTime: time.Now(),
+		parent: m,
+		datastore: &calculator_store{
+			lastAsteriskTime: time.Now(),
+		},
 	}
 }
 
 func (instance *CalculatorMenu) Label() string {
 	return "Calculator Menu"
+}
+
+func (instance *CalculatorMenu) Configure() {
+	// Reset context
+	instance.configured = true
+	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
+}
+
+func (instance *CalculatorMenu) ConfigureWithArgs(args ...any) {
+
+	instance.Configure()
+}
+
+func (instance *CalculatorMenu) Pause() {
+	Pause(instance)
+}
+
+func (instance *CalculatorMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *CalculatorMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *CalculatorMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *CalculatorMenu) Cleanup() {
+	instance.datastore.calc_input = []rune{}
+	instance.datastore.calc_displayed = ""
+}
+
+func (instance *CalculatorMenu) Save() {
+	Save(instance.parent, instance, instance.datastore)
+}
+
+func (instance *CalculatorMenu) Load() {
+	if loaded, ok := Load(instance.parent, instance); ok {
+		instance.datastore = loaded.(*calculator_store)
+	}
+}
+
+func (instance *CalculatorMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *CalculatorMenu) GetStackIndex() int {
+	return instance.stackIndex
+}
+
+func (instance *CalculatorMenu) Run() {
+	if !instance.configured {
+		panic("Attempted to call (*CalculatorMenu).Run() before (*CalculatorMenu).Configure()!")
+	}
+
+	instance.parent.CreateOrLoadPersist("Calc_ExchangeRate", 1.0)
+
+	instance.render()
+
+	var operators = []rune{'+', '-', '*', '/'}
+	var operatorIndex int
+	instance.wg.Add(1)
+	defer instance.wg.Done()
+	for {
+		select {
+		case <-instance.ctx.Done():
+			return
+
+		case evt := <-instance.parent.KeypadEvents:
+
+			log.Println(evt)
+
+			if evt.State {
+
+				instance.parent.Timers["keypad"].Reset()
+				instance.parent.Timers["screensaver"].Reset()
+				instance.parent.Display.On()
+				instance.parent.Keypad.KeyLightsOn()
+				go instance.parent.PlayKey()
+
+				switch evt.Key {
+				case '*':
+					now := time.Now()
+
+					if now.Sub(instance.datastore.lastAsteriskTime) <= 750*time.Millisecond {
+						// Cycle to next operator
+						operatorIndex = (operatorIndex + 1) % len(operators)
+
+						if len(instance.datastore.calc_input) > 0 {
+							instance.datastore.calc_input[len(instance.datastore.calc_input)-1] = operators[operatorIndex]
+						} else {
+							instance.datastore.calc_input = append(instance.datastore.calc_input, operators[operatorIndex])
+						}
+					} else {
+						// Reset cycle and start with first operator
+						operatorIndex = 0
+						instance.datastore.calc_input = append(instance.datastore.calc_input, operators[operatorIndex])
+					}
+
+					instance.datastore.lastAsteriskTime = now
+					instance.compute_displayed()
+					instance.render()
+
+				case 'C':
+					if len(instance.datastore.calc_input) == 0 {
+						go instance.parent.Pop()
+						return
+					}
+
+					if len(instance.datastore.calc_input) > 0 {
+						instance.datastore.calc_input = instance.datastore.calc_input[:len(instance.datastore.calc_input)-1]
+					}
+
+					instance.compute_displayed()
+					instance.render()
+
+				case 'P':
+					go instance.parent.Push("power")
+					return
+
+				case '#':
+					allowDecimal := true
+					for i := len(instance.datastore.calc_input) - 1; i >= 0; i-- {
+						c := instance.datastore.calc_input[i]
+						if c == '.' {
+							allowDecimal = false
+							break
+						}
+						if c == '+' || c == '-' || c == '*' || c == '/' {
+							break
+						}
+					}
+					if allowDecimal {
+						instance.datastore.calc_input = append(instance.datastore.calc_input, '.')
+						instance.compute_displayed()
+						instance.render()
+					}
+
+				case 'S':
+					selection := instance.parent.ShowSelector(SelectorArgs{
+						Title:          "Calculator",
+						SelectionClass: "calculator.main",
+						ShowTitle:      true,
+						SelectorType:   SELECTOR_MULTI_3,
+						Options: [][]string{
+							{"Equals"},
+							{"Clear"},
+							{"Exchange rate",
+								"Foreign as domestic",
+								"Domestic as foreign",
+							},
+							{"To domestic"},
+							{"To foreign"},
+						},
+						ButtonLabel:     "Select",
+						ShowPathInTitle: true,
+					}, instance.ctx)
+
+					if selection != nil && len(selection.SelectionPath) > 0 {
+						switch selection.SelectionPath[0] {
+						case "Equals":
+							res, err := instance.evaluate()
+							if err != nil {
+								instance.datastore.calc_displayed = "Error"
+								instance.datastore.calc_input = []rune{}
+							} else {
+								s := strconv.FormatFloat(res, 'f', -1, 64)
+								instance.datastore.calc_input = []rune(s)
+								instance.compute_displayed()
+							}
+
+						case "Clear":
+							instance.datastore.calc_input = []rune{}
+							instance.datastore.calc_displayed = ""
+
+						case "Exchange rate":
+							// Check if the user selected a suboption
+							if len(selection.SelectionPath) > 1 {
+								val, err := instance.evaluate()
+								if err == nil && val != 0 {
+									animCtx, animCancel := context.WithCancel(instance.ctx)
+									switch selection.SelectionPath[1] {
+									case "Foreign as domestic":
+										go instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Rate", "saved"})
+										instance.parent.Set("Calc_ExchangeRate", val)
+										go instance.parent.SyncPersistent()
+										go instance.parent.PlayKey()
+
+									case "Domestic as foreign":
+										go instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Rate", "saved"})
+										instance.parent.Set("Calc_ExchangeRate", 1.0/val)
+										go instance.parent.SyncPersistent()
+										go instance.parent.PlayKey()
+									}
+									time.Sleep(2 * time.Second)
+									animCancel()
+								}
+							}
+
+						case "To domestic":
+							val, err := instance.evaluate()
+							rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
+							if ok && err == nil {
+								res := val * rate
+								s := strconv.FormatFloat(res, 'f', -1, 64)
+								instance.datastore.calc_input = []rune(s)
+								instance.compute_displayed()
+							}
+
+						case "To foreign":
+							val, err := instance.evaluate()
+							rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
+							if ok && err == nil && rate != 0 {
+								res := val / rate
+								s := strconv.FormatFloat(res, 'f', -1, 64)
+								instance.datastore.calc_input = []rune(s)
+								instance.compute_displayed()
+							}
+						}
+					}
+
+					instance.render()
+					continue
+
+				case 'U':
+				case 'D':
+
+				default:
+					// Read input
+					instance.datastore.calc_input = append(instance.datastore.calc_input, evt.Key)
+					instance.compute_displayed()
+					instance.render()
+
+				}
+			}
+		}
+	}
 }
 
 func (instance *CalculatorMenu) render() {
@@ -44,7 +292,7 @@ func (instance *CalculatorMenu) render() {
 	m.RenderHeader("Calculator")
 	m.RenderFooter("Options", true)
 
-	display.DrawText(0, 12, display.Use_Font_Large_Bold(), instance.calc_displayed, false)
+	display.DrawText(0, 12, display.Use_Font_Large_Bold(), instance.datastore.calc_displayed, false)
 
 	display.SetColor(display.Primary())
 	display.SetLineWidth(1)
@@ -52,17 +300,6 @@ func (instance *CalculatorMenu) render() {
 	display.Stroke()
 
 	display.Render()
-}
-
-func (instance *CalculatorMenu) Configure() {
-	// Reset context
-	instance.configured = true
-	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
-}
-
-func (instance *CalculatorMenu) ConfigureWithArgs(args ...any) {
-
-	instance.Configure()
 }
 
 func (instance *CalculatorMenu) compute_displayed() {
@@ -76,7 +313,7 @@ func (instance *CalculatorMenu) compute_displayed() {
 	var number_groups = []string{}
 
 	var numbs_valid = "0123456789."
-	for _, c := range instance.calc_input {
+	for _, c := range instance.datastore.calc_input {
 		if strings.ContainsRune(numbs_valid, c) {
 
 			if len(number_groups) == 0 {
@@ -91,11 +328,11 @@ func (instance *CalculatorMenu) compute_displayed() {
 		}
 	}
 
-	instance.calc_displayed = strings.Join(number_groups, " ")
+	instance.datastore.calc_displayed = strings.Join(number_groups, " ")
 }
 
 func (instance *CalculatorMenu) evaluate() (float64, error) {
-	expr := string(instance.calc_input)
+	expr := string(instance.datastore.calc_input)
 	if len(expr) == 0 {
 		return 0, nil
 	}
@@ -182,216 +419,4 @@ func (instance *CalculatorMenu) evaluate() (float64, error) {
 	}
 
 	return result, nil
-}
-
-func (instance *CalculatorMenu) Run() {
-	if !instance.configured {
-		panic("Attempted to call (*CalculatorMenu).Run() before (*CalculatorMenu).Configure()!")
-	}
-
-	instance.parent.CreateOrLoadPersist("Calc_ExchangeRate", 1.0)
-
-	instance.render()
-
-	var operators = []rune{'+', '-', '*', '/'}
-	var operatorIndex int
-	instance.wg.Add(1)
-	defer instance.wg.Done()
-	for {
-		select {
-		case <-instance.ctx.Done():
-			return
-
-		case evt := <-instance.parent.KeypadEvents:
-
-			log.Println(evt)
-
-			if evt.State {
-
-				instance.parent.Timers["keypad"].Reset()
-				instance.parent.Timers["screensaver"].Reset()
-				instance.parent.Display.On()
-				instance.parent.Keypad.KeyLightsOn()
-				go instance.parent.PlayKey()
-
-				switch evt.Key {
-				case '*':
-					now := time.Now()
-
-					if now.Sub(instance.lastAsteriskTime) <= 750*time.Millisecond {
-						// Cycle to next operator
-						operatorIndex = (operatorIndex + 1) % len(operators)
-
-						if len(instance.calc_input) > 0 {
-							instance.calc_input[len(instance.calc_input)-1] = operators[operatorIndex]
-						} else {
-							instance.calc_input = append(instance.calc_input, operators[operatorIndex])
-						}
-					} else {
-						// Reset cycle and start with first operator
-						operatorIndex = 0
-						instance.calc_input = append(instance.calc_input, operators[operatorIndex])
-					}
-
-					instance.lastAsteriskTime = now
-					instance.compute_displayed()
-					instance.render()
-
-				case 'C':
-					if len(instance.calc_input) == 0 {
-						go instance.parent.Pop()
-						return
-					}
-
-					if len(instance.calc_input) > 0 {
-						instance.calc_input = instance.calc_input[:len(instance.calc_input)-1]
-					}
-
-					instance.compute_displayed()
-					instance.render()
-
-				case 'P':
-					go instance.parent.Push("power")
-					return
-
-				case '#':
-					allowDecimal := true
-					for i := len(instance.calc_input) - 1; i >= 0; i-- {
-						c := instance.calc_input[i]
-						if c == '.' {
-							allowDecimal = false
-							break
-						}
-						if c == '+' || c == '-' || c == '*' || c == '/' {
-							break
-						}
-					}
-					if allowDecimal {
-						instance.calc_input = append(instance.calc_input, '.')
-						instance.compute_displayed()
-						instance.render()
-					}
-
-				case 'S':
-					selection := instance.parent.ShowSelector(SelectorArgs{
-						Title:          "Calculator",
-						SelectionClass: "calculator.main",
-						ShowTitle:      true,
-						SelectorType:   SELECTOR_MULTI_3,
-						Options: [][]string{
-							{"Equals"},
-							{"Clear"},
-							{"Exchange rate",
-								"Foreign as domestic",
-								"Domestic as foreign",
-							},
-							{"To domestic"},
-							{"To foreign"},
-						},
-						ButtonLabel:     "Select",
-						ShowPathInTitle: true,
-					}, instance.ctx)
-
-					if selection != nil && len(selection.SelectionPath) > 0 {
-						switch selection.SelectionPath[0] {
-						case "Equals":
-							res, err := instance.evaluate()
-							if err != nil {
-								instance.calc_displayed = "Error"
-								instance.calc_input = []rune{}
-							} else {
-								s := strconv.FormatFloat(res, 'f', -1, 64)
-								instance.calc_input = []rune(s)
-								instance.compute_displayed()
-							}
-
-						case "Clear":
-							instance.calc_input = []rune{}
-							instance.calc_displayed = ""
-
-						case "Exchange rate":
-							// Check if the user selected a suboption
-							if len(selection.SelectionPath) > 1 {
-								val, err := instance.evaluate()
-								if err == nil && val != 0 {
-									animCtx, animCancel := context.WithCancel(instance.ctx)
-									switch selection.SelectionPath[1] {
-									case "Foreign as domestic":
-										go instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Rate", "saved"})
-										instance.parent.Set("Calc_ExchangeRate", val)
-										go instance.parent.SyncPersistent()
-										go instance.parent.PlayKey()
-
-									case "Domestic as foreign":
-										go instance.parent.RenderAnimatedAlert("ok", animCtx, []string{"Rate", "saved"})
-										instance.parent.Set("Calc_ExchangeRate", 1.0/val)
-										go instance.parent.SyncPersistent()
-										go instance.parent.PlayKey()
-									}
-									time.Sleep(2 * time.Second)
-									animCancel()
-								}
-							}
-
-						case "To domestic":
-							val, err := instance.evaluate()
-							rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
-							if ok && err == nil {
-								res := val * rate
-								s := strconv.FormatFloat(res, 'f', -1, 64)
-								instance.calc_input = []rune(s)
-								instance.compute_displayed()
-							}
-
-						case "To foreign":
-							val, err := instance.evaluate()
-							rate, ok := instance.parent.Get("Calc_ExchangeRate").(float64)
-							if ok && err == nil && rate != 0 {
-								res := val / rate
-								s := strconv.FormatFloat(res, 'f', -1, 64)
-								instance.calc_input = []rune(s)
-								instance.compute_displayed()
-							}
-						}
-					}
-
-					instance.render()
-					continue
-
-				case 'U':
-				case 'D':
-
-				default:
-					// Read input
-					instance.calc_input = append(instance.calc_input, evt.Key)
-					instance.compute_displayed()
-					instance.render()
-
-				}
-			}
-		}
-	}
-}
-
-func (instance *CalculatorMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Calculator menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *CalculatorMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Calculator menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		instance.cleanup()
-	}
-}
-
-func (instance *CalculatorMenu) cleanup() {
-	instance.calc_input = []rune{}
-	instance.calc_displayed = ""
 }

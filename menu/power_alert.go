@@ -2,12 +2,9 @@ package menu
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
-	// "lcd"
-	// "timers"
 	"misc"
 )
 
@@ -19,6 +16,7 @@ type GenericAlert struct {
 	wg         sync.WaitGroup
 	events     []*GenericAlertConfig
 	configLock sync.Mutex
+	stackIndex int
 }
 
 const (
@@ -34,14 +32,14 @@ type GenericAlertConfig struct {
 	BeepType int
 }
 
-func (*GenericAlert) Label() string {
-	return "Generic Alert"
-}
-
 func (m *Menu) NewGenericAlert() *GenericAlert {
 	return &GenericAlert{
 		parent: m,
 	}
+}
+
+func (*GenericAlert) Label() string {
+	return "Generic Alert"
 }
 
 func (instance *GenericAlert) Configure() {
@@ -65,6 +63,38 @@ func (instance *GenericAlert) ConfigureWithArgs(args ...any) {
 	}
 
 	instance.Configure()
+}
+
+func (instance *GenericAlert) Pause() {
+	Pause(instance)
+}
+
+func (instance *GenericAlert) Stop() {
+	Stop(instance)
+}
+
+func (instance *GenericAlert) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *GenericAlert) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *GenericAlert) Cleanup() {}
+
+func (instance *GenericAlert) Save() {}
+
+func (instance *GenericAlert) Load() {}
+
+func (instance *GenericAlert) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *GenericAlert) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *GenericAlert) Run() {
@@ -119,24 +149,4 @@ func (instance *GenericAlert) Run() {
 
 	instance.parent.Timers["screensaver"].Restart()
 	instance.parent.Timers["keypad"].Restart()
-}
-
-func (instance *GenericAlert) Pause() {
-	if instance.cancelFn != nil {
-		instance.cancelFn()
-	}
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Power alert pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *GenericAlert) Stop() {
-	if instance.cancelFn != nil {
-		instance.cancelFn()
-	}
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Power alert stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
 }

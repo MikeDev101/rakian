@@ -6,6 +6,7 @@ import (
 	"log"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"db"
@@ -13,6 +14,7 @@ import (
 	"serial_audio"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/google/uuid"
 	"github.com/maltegrosse/go-modemmanager"
 	"gorm.io/gorm"
 )
@@ -33,15 +35,19 @@ type SIM7600X struct {
 	registered       bool
 	emergencyNumbers []string
 	unreadVoicemails int
+	microphoneMuted  bool
 	ringingChan      chan *modem.Call
 
 	// Private properties
 	globalCtx                context.Context
 	globalCancel             context.CancelFunc
 	serial_audio             *serial_audio.SerialAudio
+	audio_lock               sync.Mutex
 	audio_ctx                context.Context
 	audio_cancel             context.CancelFunc
 	calls                    map[dbus.ObjectPath]*modem.Call
+	calls_lock               sync.Mutex
+	current_call             *modem.Call
 	vmail_events             chan dbus.ObjectPath
 	incoming_call_events     chan dbus.ObjectPath
 	call_deleted_events      chan dbus.ObjectPath
@@ -67,7 +73,7 @@ type callStateChange struct {
 	reason   modemmanager.MMCallStateReason
 }
 
-func New(debug bool, db *gorm.DB) *SIM7600X {
+func New(debug bool, db *gorm.DB) modem.Modem {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Initialize
 	instance := &SIM7600X{
@@ -280,8 +286,21 @@ func (m *SIM7600X) SaveSMS(sms modemmanager.Sms, smsPath dbus.ObjectPath) {
 	received, _ := sms.GetTimestamp()
 	number, _ := sms.GetNumber()
 
-	if strings.HasPrefix(number, "90008000") || strings.HasPrefix(text, "//VZ") || strings.HasPrefix(text, "//VVM") {
-		log.Printf("🛑 Ignoring system VVM message at %s. Leaving it for vvmd.", smsPath)
+	likely_vvmd := false
+	likely_vvmd_prefixes := []string{"91009000", "90008000"}
+	for pfx := range likely_vvmd_prefixes {
+		if strings.HasPrefix(number, likely_vvmd_prefixes[pfx]) {
+			likely_vvmd = true
+			break
+		}
+	}
+
+	if likely_vvmd || strings.HasPrefix(text, "//VZ") || strings.HasPrefix(text, "//VVM") {
+		is_likely := ""
+		if likely_vvmd {
+			is_likely = " (likely)"
+		}
+		log.Printf("🛑 Ignoring %s system VVM message at %s. Leaving it for vvmd.", is_likely, smsPath)
 		return
 	}
 
@@ -394,6 +413,9 @@ func (m *SIM7600X) ListenToVvmdEvents() {
 						}
 					}
 				}
+
+			case "org.kop316.vvm.ModemManager.ProvisionStatusChanged":
+				log.Printf("🔔 [VVM] Provisioning Status Changed: %v", signal.Body)
 
 			// --- OPTIONAL: LOG EVERYTHING ELSE FOR DEBUGGING ---
 			default:
@@ -635,24 +657,26 @@ func (m *SIM7600X) GetCarrierAndRoaming() {
 	}
 }
 
-func (m *SIM7600X) StartAudio(call *modem.Call) {
+func (m *SIM7600X) StartAudio() {
+	defer m.audio_lock.Unlock()
+	m.audio_lock.Lock()
+
+	// Begin transferring audio bidirectionally
+	if (m.audio_ctx != nil && m.audio_ctx.Err() == nil) || (m.audio_cancel != nil) {
+		log.Println("ℹ️  Serial audio context already present...")
+		return
+	}
+
 	// Force the modem to use 16KHz audio using a raw AT command
 	if _, err := m.Modem.Command("AT+CPCMFRM=1", 25); err != nil {
 		log.Printf("⚠️ Failed to set 16KHz audio: %v", err)
 	} else {
-		log.Println("Set audio to 16KHz.")
+		log.Println("✅ Set audio to 16KHz.")
 	}
 
-	// Begin transferring audio bidirectionally
-	if m.audio_ctx != nil && m.audio_ctx.Err() == nil {
-		return
-	}
-
-	log.Println("Starting Serial Audio loop...")
-	ctx, cancel := context.WithCancel(context.Background())
-	m.audio_ctx = ctx
-	m.audio_cancel = cancel
-	m.serial_audio.Run(ctx, cancel)
+	log.Println("ℹ️  Starting Serial Audio loop...")
+	m.audio_ctx, m.audio_cancel = context.WithCancel(context.Background())
+	go m.serial_audio.Run(m.audio_ctx, m.audio_cancel, m.current_call)
 }
 
 func (m *SIM7600X) StopAudio() {
@@ -665,21 +689,15 @@ func (m *SIM7600X) StopAudio() {
 }
 
 func (m *SIM7600X) CheckAudioState() {
-	audioNeeded := false
-	for _, c := range m.calls {
-		if c.Active {
-			audioNeeded = true
-			break
-		}
-
-		switch c.State {
-		case "outgoing", "incoming", "ringing", "active", "held":
-			audioNeeded = true
+	for _, call := range m.GetCalls() {
+		if call.State == modemmanager.MmCallStateDialing || call.State == modemmanager.MmCallStateRingingOut || call.State == modemmanager.MmCallStateActive || call.State == modemmanager.MmCallStateHeld || call.State == modemmanager.MmCallStateWaiting {
+			log.Println("🔊 Audio needed")
+			m.StartAudio()
+			return
 		}
 	}
-	if !audioNeeded {
-		m.StopAudio()
-	}
+	log.Println("🔇 Audio not needed")
+	m.StopAudio()
 }
 
 // ListenToModemEvents taps into the D-Bus system bus and routes signals to our Go channels.
@@ -811,79 +829,60 @@ func (m *SIM7600X) ProcessEvents() {
 			return
 		case callPath := <-m.incoming_call_events:
 			log.Printf("📞 [EVENT] Call Incoming Received! DBus Path: %s\n", callPath)
-			// You can use go-modemmanager to instantiate the call object and accept it:
-			// call := modemmanager.NewCall(callPath)
-			// call.Accept()
-
 			call, _ := modemmanager.NewCall(callPath)
-			number, _ := call.GetNumber()
-			reason, _ := call.GetStateReason()
 			m.SaveCallStateEvent(call, callPath)
 
-			if session := m.calls[callPath]; session == nil {
-				session = &modem.Call{
-					DBusPath: callPath,
-					Call:     call,
-					State:    "incoming",
-					Number:   number,
-					Ended:    make(chan bool, 1),
-				}
-				m.calls[callPath] = session
+			// Sync with the modem to create/update the call session
+			m.SyncCalls()
 
-				switch reason {
-				case modemmanager.MmCallStateReasonIncomingNew, modemmanager.MmCallStateReasonTransferred:
-					go func() {
-						m.ringingChan <- session
-					}()
+			// After sync, find the call and check if it should be announced
+			if session, ok := m.calls[callPath]; ok {
+				if !session.Announced && session.State == modemmanager.MmCallStateRingingIn {
+					switch session.Reason {
+					case modemmanager.MmCallStateReasonIncomingNew, modemmanager.MmCallStateReasonTransferred:
+						session.Announced = true
+						go func() {
+							m.ringingChan <- session
+						}()
+					}
 				}
 			}
-
-			// Answer the call:
-			// if state == modemmanager.MmCallStateRingingIn {
-			// 	log.Println("   -> Answering the call...")
-			// 	call.Accept()
-			//}
 
 		case callPath := <-m.call_deleted_events:
 			log.Printf("📞 [EVENT] Call Deleted (Hung up)! DBus Path: %s\n", callPath)
-			if session := m.calls[callPath]; session != nil {
-				session.State = "terminated"
-				session.Active = false
-				session.Ended <- true
-				delete(m.calls, callPath)
-			}
-			m.CheckAudioState()
+
+			// Sync with modem state to ensure map is accurate
+			m.SyncCalls()
+
+			go m.CheckAudioState()
 
 		case event := <-m.call_state_events:
 			log.Printf("📞 [EVENT] Call State Changed! Path: %s, State: %d -> %d, Reason: %d\n", event.path, event.oldState, event.newState, event.reason)
 			call, _ := modemmanager.NewCall(event.path)
 			m.SaveCallStateEvent(call, event.path)
 			if session := m.calls[event.path]; session != nil {
-				session.State = event.newState.String()
+				session.State = event.newState
 
 				switch event.newState {
-				case modemmanager.MmCallStateDialing:
-					session.State = "outgoing"
-				case modemmanager.MmCallStateRingingIn:
-					session.State = "incoming"
-				case modemmanager.MmCallStateRingingOut:
-					session.State = "ringing"
 				case modemmanager.MmCallStateActive:
-					session.State = "active"
 					session.StartTime = time.Now()
-					session.Active = true
-
+					m.current_call = session
 				case modemmanager.MmCallStateTerminated:
-					session.State = "terminated"
-					session.Active = false
-					session.Ended <- true
+					select {
+					case session.Ended <- true:
+					default:
+					}
 					delete(m.calls, event.path)
-				case modemmanager.MmCallStateHeld:
-					session.State = "held"
-					session.Active = false
+					if m.current_call == session {
+						m.current_call = nil
+						for _, c := range m.calls {
+							m.current_call = c
+							break
+						}
+					}
 				}
 			}
-			m.CheckAudioState()
+			go m.CheckAudioState()
 
 		case smsPath := <-m.incoming_sms_events:
 			log.Printf("✉️ [EVENT] New SMS Received! DBus Path: %s\n", smsPath)
@@ -980,25 +979,37 @@ func (m *SIM7600X) PlaceCall(number string) (*modem.Call, error) {
 		return nil, fmt.Errorf("failed to create call: %v", err)
 	}
 
-	// Dial the number
-	if err := call.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start call: %v", err)
-	}
-
 	dbuspath := call.GetObjectPath()
-	log.Printf("📞 Call started successfully! DBus Path: %s", dbuspath)
 
 	output := &modem.Call{
-		DBusPath: dbuspath,
-		Call:     call,
-		State:    "outgoing",
-		Number:   number,
-		Ended:    make(chan bool, 1),
+		ID:        uuid.New().String(),
+		DBusPath:  dbuspath,
+		Call:      call,
+		State:     modemmanager.MmCallStateDialing,
+		Number:    number,
+		Mute:      false,
+		Volume:    1,
+		Ended:     make(chan bool, 1),
+		Announced: false,
 	}
 
 	m.calls[output.DBusPath] = output
-	go m.StartAudio(output)
+	m.current_call = output
 
+	// Dial the number
+	if err := call.Start(); err != nil {
+		delete(m.calls, output.DBusPath)
+		if m.current_call == output {
+			m.current_call = nil
+			for _, c := range m.calls {
+				m.current_call = c
+				break
+			}
+		}
+		return nil, fmt.Errorf("failed to start call: %v", err)
+	}
+
+	log.Printf("📞 Call started successfully! DBus Path: %s", dbuspath)
 	return output, nil
 }
 
@@ -1010,17 +1021,24 @@ func (m *SIM7600X) AnswerCall(call *modem.Call) error {
 
 	log.Printf("📞 Answering call at %s...", call)
 
-	if err := call.Call.Accept(); err != nil {
-		return fmt.Errorf("failed to accept call: %v", err)
+	// Use AT+ATA to answer (more reliable on SIM7600X than QMI Accept)
+	if _, err := m.Modem.Command("AT+ATA", 10); err != nil {
+		log.Printf("⚠️  AT+ATA failed: %v, attempting D-Bus Accept...", err)
+		if err := call.Call.Accept(); err != nil {
+			return fmt.Errorf("failed to accept call: %v", err)
+		}
 	}
 
 	log.Println("📞 Call accepted.")
-
-	go m.StartAudio(call)
-	call.StartTime = time.Now()
-	call.State = "active"
-	call.Active = true
 	return nil
+}
+
+func (m *SIM7600X) GetCalls() []*modem.Call {
+	calls := make([]*modem.Call, 0, len(m.calls))
+	for _, call := range m.calls {
+		calls = append(calls, call)
+	}
+	return calls
 }
 
 // HangupCall terminates an active or ringing call given its DBus path.
@@ -1036,7 +1054,6 @@ func (m *SIM7600X) HangupCall(call *modem.Call) error {
 	}
 
 	log.Println("📞 Call hung up.")
-	call.State = "terminated"
 	return nil
 }
 
@@ -1056,7 +1073,6 @@ func (m *SIM7600X) HangupAll() error {
 	if err := voice.HangupAll(); err != nil {
 		return fmt.Errorf("failed to clear calls: %v", err)
 	}
-
 	return nil
 }
 
@@ -1082,38 +1098,141 @@ func (m *SIM7600X) HoldCall(call *modem.Call) error {
 	if !m.ok {
 		return fmt.Errorf("modem is not ready")
 	}
-	conn, err := dbus.SystemBus()
-	if err != nil {
+
+	log.Printf("📞 Holding call %s (AT+CHLD=2)...", call)
+	if _, err := m.Modem.Command("AT+CHLD=2", 10); err != nil {
+		log.Printf("⚠️ Failed to hold call: %v", err)
 		return err
 	}
 
-	// TODO: Needs to be tested
-	obj := conn.Object("org.freedesktop.ModemManager1", call.DBusPath)
-	err = obj.Call("org.freedesktop.ModemManager1.Call.Hold", 0).Err
+	return nil
+}
 
+// SyncCalls synchronizes the local call list with the modem's actual state.
+func (m *SIM7600X) SyncCalls() {
+	voice, err := m.Modem.GetVoice()
 	if err != nil {
-		log.Printf("⚠️ Failed to hold call: %v", err)
+		log.Printf("⚠️ Failed to get voice interface for sync: %v", err)
+		return
 	}
 
-	return err
+	calls, err := voice.ListCalls()
+	if err != nil {
+		log.Printf("⚠️ Failed to list calls for sync: %v", err)
+		return
+	}
+
+	// Track matched local calls to identify stale ones later
+	matchedCalls := make(map[*modem.Call]bool)
+
+	for _, mmCall := range calls {
+		path := mmCall.GetObjectPath()
+		number, _ := mmCall.GetNumber()
+		state, _ := mmCall.GetState()
+
+		// 1. Try to match by DBus Path (Primary Key)
+		if session, exists := m.calls[path]; exists {
+			session.State = state
+			session.Call = mmCall
+			matchedCalls[session] = true
+			continue
+		}
+
+		// 2. Try to match by Phone Number (Stable Key)
+		var foundSession *modem.Call
+		var oldPath dbus.ObjectPath
+
+		for p, session := range m.calls {
+			if session.Number == number && !matchedCalls[session] {
+				foundSession = session
+				oldPath = p
+				break
+			}
+		}
+
+		if foundSession != nil {
+			log.Printf("🧹 Sync: Re-associating call %s (old path %s -> new path %s)", number, oldPath, path)
+			delete(m.calls, oldPath)
+			foundSession.DBusPath = path
+			foundSession.Call = mmCall
+			foundSession.State = state
+			m.calls[path] = foundSession
+			matchedCalls[foundSession] = true
+		} else {
+			// 3. New Call
+			if state == modemmanager.MmCallStateTerminated {
+				continue
+			}
+
+			log.Printf("🧹 Sync: Found untracked call %s (%s)", path, number)
+			reason, _ := mmCall.GetStateReason()
+			newCall := &modem.Call{
+				ID:        uuid.New().String(),
+				DBusPath:  path,
+				Call:      mmCall,
+				State:     state,
+				Number:    number,
+				Reason:    reason,
+				Mute:      false,
+				Volume:    1,
+				Ended:     make(chan bool, 1),
+				Announced: false,
+			}
+			m.calls[path] = newCall
+			matchedCalls[newCall] = true
+		}
+	}
+
+	// 4. Prune stale calls
+	for path, session := range m.calls {
+		if !matchedCalls[session] {
+			log.Printf("🧹 Sync: Pruning stale call %s (%s)", path, session.Number)
+			session.State = modemmanager.MmCallStateTerminated
+			select {
+			case session.Ended <- true:
+			default:
+			}
+			delete(m.calls, path)
+		}
+	}
+
+	// 5. Validate current_call
+	if m.current_call != nil {
+		if session, exists := m.calls[m.current_call.DBusPath]; !exists || session != m.current_call {
+			m.current_call = nil
+		}
+	}
+
+	if m.current_call == nil {
+		// Prefer active calls
+		for _, c := range m.calls {
+			if c.State == modemmanager.MmCallStateActive {
+				m.current_call = c
+				break
+			}
+		}
+		// Fallback to any call
+		if m.current_call == nil {
+			for _, c := range m.calls {
+				m.current_call = c
+				break
+			}
+		}
+	}
+
+	go m.CheckAudioState()
 }
 
 func (m *SIM7600X) UnholdCall(call *modem.Call) error {
 	if !m.ok {
 		return fmt.Errorf("modem is not ready")
 	}
-	conn, err := dbus.SystemBus()
-	if err != nil {
+
+	log.Printf("📞 Unholding call %s (AT+CHLD=2)...", call)
+	if _, err := m.Modem.Command("AT+CHLD=2", 10); err != nil {
+		log.Printf("⚠️ Failed to unhold call: %v", err)
 		return err
 	}
 
-	// TODO: Needs to be tested
-	obj := conn.Object("org.freedesktop.ModemManager1", call.DBusPath)
-	err = obj.Call("org.freedesktop.ModemManager1.Call.Unhold", 0).Err
-
-	if err != nil {
-		log.Printf("⚠️ Failed to unhold call: %v", err)
-	}
-
-	return err
+	return nil
 }

@@ -10,6 +10,11 @@ import (
 	"gfx"
 )
 
+type home_selection_store struct {
+	selection  int
+	viewOffset int
+}
+
 type HomeSelectionMenu struct {
 	ctx        context.Context
 	animCtx    context.Context
@@ -18,26 +23,28 @@ type HomeSelectionMenu struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
-	selection  int
-	viewOffset int
 	options    [][]string
+	datastore  *home_selection_store
+	stackIndex int
 }
 
-func (m *Menu) NewHomeSelectionMenu() *HomeSelectionMenu {
+func (m *Menu) NewHomeSelectionMenu() MenuInstance {
 	return &HomeSelectionMenu{
-		parent:    m,
-		selection: 0,
+		parent: m,
+		datastore: &home_selection_store{
+			selection: 0,
+		},
 		options: [][]string{
-			{"Phonebook", "phonebook"},
+			{"Phone book", "phone_book"},
 			{"Messages", "messages"},
-			{"Chats", "chats"},
+			{"Chat", "chat"},
 			{"Call register", "call_register"},
 			{"Settings", "settings"},
 			{"Call divert", "call_divert"},
 			{"Apps", "apps"},
 			{"Calculator", "calculator"},
 			{"Clock", "clock"},
-			{"Notes", "notes"},
+			{"Reminders", "reminders"},
 			{"Tones", "tones"},
 			{"SIM tools", "sim_tools"},
 			{"Drawing", "drawing"},
@@ -47,45 +54,6 @@ func (m *Menu) NewHomeSelectionMenu() *HomeSelectionMenu {
 
 func (instance *HomeSelectionMenu) Label() string {
 	return "Home Selection Menu"
-}
-
-func (instance *HomeSelectionMenu) render() {
-	m := instance.parent
-	display := m.Display
-	label := instance.options[instance.selection][0]
-
-	defer display.Unlock()
-	display.Lock()
-
-	display.Clear(display.Primary())
-	m.RenderFooter("Select", true)
-
-	font := display.Use_Font_Small_Bold()
-	display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", int(instance.selection+1)), false, gfx.AlignLeft, gfx.AlignNone)
-
-	font = display.Use_Font_Large_Bold()
-	display.DrawTextAligned(40, 8, font, label, false, gfx.AlignCenter, gfx.AlignBelow)
-
-	anim := instance.options[instance.selection][1]
-	display.Render()
-	go display.PlayAnimation(instance.animCtx, anim, 40, 36, gfx.AlignCenter, gfx.AlignAbove)
-}
-
-func (instance *HomeSelectionMenu) handle_selection() {
-	go instance.parent.PlayKey()
-	selection := instance.options[instance.selection][0]
-	log.Printf("Selected: %s", selection)
-	switch selection {
-	case "Phonebook":
-		go instance.parent.PopToMenu("phonebook")
-	case "Settings":
-		go instance.parent.PopToMenu("settings")
-	case "Calculator":
-		go instance.parent.PopToMenu("calculator")
-	default:
-		// Generic handler
-		go instance.parent.Pop()
-	}
 }
 
 func (instance *HomeSelectionMenu) Configure() {
@@ -98,6 +66,47 @@ func (instance *HomeSelectionMenu) Configure() {
 func (instance *HomeSelectionMenu) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *HomeSelectionMenu) Pause() {
+	Pause(instance)
+}
+
+func (instance *HomeSelectionMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *HomeSelectionMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *HomeSelectionMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *HomeSelectionMenu) Cleanup() {
+	instance.datastore.selection = 0
+	instance.datastore.viewOffset = 0
+}
+
+func (instance *HomeSelectionMenu) Save() {
+	Save(instance.parent, instance, instance.datastore)
+}
+
+func (instance *HomeSelectionMenu) Load() {
+	if loaded, ok := Load(instance.parent, instance); ok {
+		instance.datastore = loaded.(*home_selection_store)
+	}
+}
+
+func (instance *HomeSelectionMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *HomeSelectionMenu) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *HomeSelectionMenu) Run() {
@@ -134,19 +143,19 @@ func (instance *HomeSelectionMenu) Run() {
 					case 'U':
 						instance.animCancel()
 						instance.animCtx, instance.animCancel = context.WithCancel(instance.ctx)
-						if instance.selection == 0 {
-							instance.selection = len(instance.options) - 1
-						} else if instance.selection > 0 {
-							instance.selection -= 1
+						if instance.datastore.selection == 0 {
+							instance.datastore.selection = len(instance.options) - 1
+						} else if instance.datastore.selection > 0 {
+							instance.datastore.selection -= 1
 						}
 						instance.render()
 					case 'D':
 						instance.animCancel()
 						instance.animCtx, instance.animCancel = context.WithCancel(instance.ctx)
-						if instance.selection < len(instance.options)-1 {
-							instance.selection += 1
-						} else if instance.selection == len(instance.options)-1 {
-							instance.selection = 0
+						if instance.datastore.selection < len(instance.options)-1 {
+							instance.datastore.selection += 1
+						} else if instance.datastore.selection == len(instance.options)-1 {
+							instance.datastore.selection = 0
 						}
 						instance.render()
 					case 'S':
@@ -169,7 +178,7 @@ func (instance *HomeSelectionMenu) Run() {
 							instance.animCancel()
 
 							// Convert evt.Key to int
-							instance.selection = min(int(evt.Key-'0')-1, len(instance.options)-1)
+							instance.datastore.selection = min(int(evt.Key-'0')-1, len(instance.options)-1)
 
 							// Handle
 							go instance.handle_selection()
@@ -184,24 +193,41 @@ func (instance *HomeSelectionMenu) Run() {
 	})
 }
 
-func (instance *HomeSelectionMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Home selection menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
+func (instance *HomeSelectionMenu) render() {
+	m := instance.parent
+	display := m.Display
+	label := instance.options[instance.datastore.selection][0]
+
+	defer display.Unlock()
+	display.Lock()
+
+	display.Clear(display.Primary())
+	m.RenderFooter("Select", true)
+
+	font := display.Use_Font_Small_Bold()
+	display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", int(instance.datastore.selection+1)), false, gfx.AlignLeft, gfx.AlignNone)
+
+	font = display.Use_Font_Large_Bold()
+	display.DrawTextAligned(40, 8, font, label, false, gfx.AlignCenter, gfx.AlignBelow)
+
+	anim := instance.options[instance.datastore.selection][1]
+	display.Render()
+	go display.PlayAnimation(instance.animCtx, anim, 40, 36, gfx.AlignCenter, gfx.AlignAbove)
 }
 
-func (instance *HomeSelectionMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Home selection menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		go instance.cleanup()
+func (instance *HomeSelectionMenu) handle_selection() {
+	go instance.parent.PlayKey()
+	selection := instance.options[instance.datastore.selection][0]
+	log.Printf("Selected: %s", selection)
+	switch selection {
+	case "Phone book":
+		go instance.parent.PopToMenu("phone_book")
+	case "Settings":
+		go instance.parent.PopToMenu("settings")
+	case "Calculator":
+		go instance.parent.PopToMenu("calculator")
+	default:
+		// Generic handler
+		go instance.parent.Pop()
 	}
-}
-
-func (instance *HomeSelectionMenu) cleanup() {
-	instance.selection = 0
 }

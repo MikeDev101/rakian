@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"modem"
+
+	"github.com/google/uuid"
+	"github.com/maltegrosse/go-modemmanager"
 )
 
 // MockModem is a mock implementation of the Modem interface for testing.
@@ -16,6 +19,7 @@ type MockModem struct {
 	roaming          bool
 	sos              bool
 	registered       bool
+	mute             bool
 	emergencyNumbers []string
 	unreadVoicemails int
 	ringingChan      chan *modem.Call
@@ -67,35 +71,45 @@ func (m *MockModem) SetFlightMode(state bool) {
 func (m *MockModem) PlaceCall(number string) (*modem.Call, error) {
 	log.Printf("[MockModem] Placing call to %s", number)
 	call := &modem.Call{
-		StartTime: time.Now(),
-		State:     "outgoing",
+		ID:        uuid.New().String(),
+		StartTime: time.Time{},
+		State:     modemmanager.MmCallStateDialing,
 		Number:    number,
-		Active:    true,
+		Mute:      false,
+		Volume:    0.5,
 		Ended:     make(chan bool, 1),
+		Announced: false,
 	}
-	m.Calls[number] = call
+	m.Calls[call.ID] = call
+	go func() {
+		time.Sleep(5 * time.Second)
+		log.Printf("[MockModem] Simulated call %s ringing", call)
+		call.State = modemmanager.MmCallStateRingingOut
+		time.Sleep(3 * time.Second)
+		log.Printf("[MockModem] Simulated call %s active", call)
+		call.State = modemmanager.MmCallStateActive
+		call.StartTime = time.Now()
+	}()
 	return call, nil
 }
 
 // AnswerCall answers the given call.
 func (m *MockModem) AnswerCall(call *modem.Call) error {
-	log.Printf("[MockModem] Answering call from %s", call.Number)
-	call.State = "active"
-	call.Active = true
+	log.Printf("[MockModem] Answering call from %s", call)
+	call.State = modemmanager.MmCallStateActive
 	call.StartTime = time.Now()
 	return nil
 }
 
 // HangupCall terminates the given call.
 func (m *MockModem) HangupCall(call *modem.Call) error {
-	log.Printf("[MockModem] Hanging up call %s", call.Number)
-	call.State = "terminated"
-	call.Active = false
+	log.Printf("[MockModem] Hanging up call %s", call)
+	call.State = modemmanager.MmCallStateTerminated
 	select {
 	case call.Ended <- true:
 	default:
 	}
-	delete(m.Calls, call.Number)
+	delete(m.Calls, call.ID)
 	return nil
 }
 
@@ -110,21 +124,21 @@ func (m *MockModem) HangupAll() error {
 
 // SendDTMF sends tones to the call.
 func (m *MockModem) SendDTMF(call *modem.Call, tones string) error {
-	log.Printf("[MockModem] Sending DTMF %s to %s", tones, call.Number)
+	log.Printf("[MockModem] Sending DTMF %s to %s", tones, call)
 	return nil
 }
 
 // HoldCall holds the call.
 func (m *MockModem) HoldCall(call *modem.Call) error {
-	log.Printf("[MockModem] Holding call %s", call.Number)
-	call.State = "held"
+	log.Printf("[MockModem] Holding call %s", call)
+	call.State = modemmanager.MmCallStateHeld
 	return nil
 }
 
 // UnholdCall unholds the call.
 func (m *MockModem) UnholdCall(call *modem.Call) error {
-	log.Printf("[MockModem] Unholding call %s", call.Number)
-	call.State = "active"
+	log.Printf("[MockModem] Unholding call %s", call)
+	call.State = modemmanager.MmCallStateActive
 	return nil
 }
 
@@ -141,12 +155,23 @@ func (m *MockModem) Stop() {
 // SimulateIncomingCall triggers an incoming call event.
 func (m *MockModem) SimulateIncomingCall(number string) {
 	call := &modem.Call{
-		StartTime: time.Now(),
-		State:     "incoming",
+		ID:        uuid.New().String(),
+		StartTime: time.Time{},
+		State:     modemmanager.MmCallStateRingingIn,
 		Number:    number,
-		Active:    false,
+		Mute:      false,
+		Volume:    0.5,
 		Ended:     make(chan bool, 1),
+		Announced: false,
 	}
-	m.Calls[number] = call
+	m.Calls[call.ID] = call
 	m.ringingChan <- call
+}
+
+func (m *MockModem) GetCalls() []*modem.Call {
+	calls := make([]*modem.Call, 0, len(m.Calls))
+	for _, call := range m.Calls {
+		calls = append(calls, call)
+	}
+	return calls
 }

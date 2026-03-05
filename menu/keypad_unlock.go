@@ -2,7 +2,6 @@ package menu
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 )
@@ -13,9 +12,10 @@ type KeypadUnlockMenu struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
+	stackIndex int
 }
 
-func (m *Menu) NewKeypadUnlockMenu() *KeypadUnlockMenu {
+func (m *Menu) NewKeypadUnlockMenu() MenuInstance {
 	return &KeypadUnlockMenu{
 		parent: m,
 	}
@@ -34,6 +34,38 @@ func (instance *KeypadUnlockMenu) Configure() {
 func (instance *KeypadUnlockMenu) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *KeypadUnlockMenu) Pause() {
+	Pause(instance)
+}
+
+func (instance *KeypadUnlockMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *KeypadUnlockMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *KeypadUnlockMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *KeypadUnlockMenu) Cleanup() {}
+
+func (instance *KeypadUnlockMenu) Save() {}
+
+func (instance *KeypadUnlockMenu) Load() {}
+
+func (instance *KeypadUnlockMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *KeypadUnlockMenu) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *KeypadUnlockMenu) Run() {
@@ -90,26 +122,4 @@ func (instance *KeypadUnlockMenu) Run() {
 			}
 		}
 	}()
-}
-
-func (instance *KeypadUnlockMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Keypad unlock menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *KeypadUnlockMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Keypad unlock menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		go instance.cleanup()
-	}
-}
-
-func (instance *KeypadUnlockMenu) cleanup() {
-	// Unused
 }

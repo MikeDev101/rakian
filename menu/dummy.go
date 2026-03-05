@@ -2,7 +2,6 @@ package menu
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
@@ -15,9 +14,10 @@ type DummyMenu struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
+	stackIndex int
 }
 
-func (m *Menu) NewDummyMenu() *DummyMenu {
+func (m *Menu) NewDummyMenu() MenuInstance {
 	return &DummyMenu{
 		parent: m,
 	}
@@ -91,23 +91,33 @@ func (instance *DummyMenu) Run() {
 }
 
 func (instance *DummyMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Dummy menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
+	Pause(instance)
 }
 
 func (instance *DummyMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Dummy menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		go instance.cleanup()
+	Stop(instance)
+}
+
+func (instance *DummyMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
 	}
 }
 
-func (instance *DummyMenu) cleanup() {
+func (instance *DummyMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
 
+func (instance *DummyMenu) Cleanup() {}
+
+func (instance *DummyMenu) Save() {}
+
+func (instance *DummyMenu) Load() {}
+
+func (instance *DummyMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *DummyMenu) GetStackIndex() int {
+	return instance.stackIndex
 }

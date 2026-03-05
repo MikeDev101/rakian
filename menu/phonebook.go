@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 )
 
 const (
@@ -20,17 +19,14 @@ type PhonebookMenu struct {
 	parent       *Menu
 	wg           sync.WaitGroup
 	default_args *SelectorArgs
+	stackIndex   int
 }
 
-func (*PhonebookMenu) Label() string {
-	return "PhoneBook Menu"
-}
-
-func (m *Menu) NewPhonebookMenu() *PhonebookMenu {
+func (m *Menu) NewPhonebookMenu() MenuInstance {
 	return &PhonebookMenu{
 		parent: m,
 		default_args: &SelectorArgs{
-			Title:          "Phonebook",
+			Title:          "Phone book",
 			SelectionClass: "phonebook.main",
 			SelectorType:   SELECTOR_MULTI_3,
 			ShowTitle:      true,
@@ -50,6 +46,10 @@ func (m *Menu) NewPhonebookMenu() *PhonebookMenu {
 	}
 }
 
+func (*PhonebookMenu) Label() string {
+	return "Phone book Menu"
+}
+
 func (instance *PhonebookMenu) Configure() {
 	// Reset context
 	instance.configured = true
@@ -59,22 +59,36 @@ func (instance *PhonebookMenu) Configure() {
 func (instance *PhonebookMenu) ConfigureWithArgs(args ...any) {
 	instance.Configure()
 }
+func (instance *PhonebookMenu) Pause() {
+	Pause(instance)
+}
 
-func (instance *PhonebookMenu) PhonebookMain(selection_path []string) int {
-	switch selection_path[len(selection_path)-1] {
-	case "Search":
-		// Show a Text entry prompt to search the phonebook
-	case "Service Numbers":
-		// Show a selector prompt with all the loaded EmergencyNumbers from the modem
-	case "Erase":
-		// Show a list of all contacts, allowing the user to erase them one at a time
-	case "Edit":
-		// Show a list of all contacts, allowing the user to edit one
-	case "Assign Tone":
-		// Show a list of all contacts, allowing the user to assign a tone to one
+func (instance *PhonebookMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *PhonebookMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
 	}
+}
 
-	return PhonebookActionShowSelector
+func (instance *PhonebookMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *PhonebookMenu) Cleanup() {}
+
+func (instance *PhonebookMenu) Save() {}
+
+func (instance *PhonebookMenu) Load() {}
+
+func (instance *PhonebookMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *PhonebookMenu) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *PhonebookMenu) Run() {
@@ -97,7 +111,7 @@ func (instance *PhonebookMenu) Run() {
 		}
 
 		if selection.SelectionClass == "phonebook.main" {
-			action := instance.PhonebookMain(selection.SelectionPath)
+			action := instance.phonebookMain(selection.SelectionPath)
 			switch action {
 			case PhonebookActionExit:
 				m.Pop()
@@ -109,23 +123,19 @@ func (instance *PhonebookMenu) Run() {
 	}
 }
 
-func (instance *PhonebookMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Phonebook handler pause timed out — goroutines may be stuck")
-		// Optional: escalate here
+func (instance *PhonebookMenu) phonebookMain(selection_path []string) int {
+	switch selection_path[len(selection_path)-1] {
+	case "Search":
+		// Show a Text entry prompt to search the phonebook
+	case "Service Numbers":
+		// Show a selector prompt with all the loaded EmergencyNumbers from the modem
+	case "Erase":
+		// Show a list of all contacts, allowing the user to erase them one at a time
+	case "Edit":
+		// Show a list of all contacts, allowing the user to edit one
+	case "Assign Tone":
+		// Show a list of all contacts, allowing the user to assign a tone to one
 	}
-}
 
-func (instance *PhonebookMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Phonebook handler stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		go instance.cleanup()
-	}
-}
-
-func (instance *PhonebookMenu) cleanup() {
+	return PhonebookActionShowSelector
 }

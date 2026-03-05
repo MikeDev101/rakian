@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	// "lcd"
-	// "timers"
 	"misc"
 )
 
@@ -17,9 +15,10 @@ type DeadBatteryAlert struct {
 	cancelFn   context.CancelFunc
 	parent     *Menu
 	wg         sync.WaitGroup
+	stackIndex int
 }
 
-func (m *Menu) NewDeadBatteryAlert() *DeadBatteryAlert {
+func (m *Menu) NewDeadBatteryAlert() MenuInstance {
 	return &DeadBatteryAlert{
 		parent: m,
 	}
@@ -47,6 +46,38 @@ func (instance *DeadBatteryAlert) Configure() {
 func (instance *DeadBatteryAlert) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
+}
+
+func (instance *DeadBatteryAlert) Pause() {
+	Pause(instance)
+}
+
+func (instance *DeadBatteryAlert) Stop() {
+	Stop(instance)
+}
+
+func (instance *DeadBatteryAlert) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *DeadBatteryAlert) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *DeadBatteryAlert) Cleanup() {}
+
+func (instance *DeadBatteryAlert) Save() {}
+
+func (instance *DeadBatteryAlert) Load() {}
+
+func (instance *DeadBatteryAlert) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *DeadBatteryAlert) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *DeadBatteryAlert) Run() {
@@ -83,31 +114,4 @@ func (instance *DeadBatteryAlert) Run() {
 			return
 		}
 	}()
-}
-
-func (instance *DeadBatteryAlert) Pause() {
-	log.Println("⌛ Dead battery alert pausing...")
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Dead battery alert pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		log.Println("⏸️ Dead battery alert paused")
-	}
-}
-
-func (instance *DeadBatteryAlert) Stop() {
-	log.Println("⌛ Dead battery alert stopping...")
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Dead battery alert stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		log.Println("❌ Dead battery alert stopped")
-		go instance.cleanup()
-	}
-}
-
-func (instance *DeadBatteryAlert) cleanup() {
-
 }

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"modem"
+
 	"github.com/mesilliac/pulse-simple"
 	"go.bug.st/serial"
 )
@@ -33,22 +35,22 @@ func Init() *SerialAudio {
 	}
 }
 
-func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc) {
-	log.Println("Starting Serial Audio...")
+func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, current_call *modem.Call) {
+	log.Println("ℹ️  Starting Serial Audio...")
 	var wg sync.WaitGroup
 
 	// 1. Open Serial Port
 	mode := &serial.Mode{BaudRate: baudRate}
 	serialPort, err := serial.Open(serialDevice, mode)
 	if err != nil {
-		log.Printf("Serial Error: %v", err)
+		log.Printf("⚠️ Serial Audio port error: %v", err)
 		cancel()
 		return
 	}
 	serialPort.ResetInputBuffer()
 	serialPort.ResetOutputBuffer()
 	serialPort.SetReadTimeout(250 * time.Millisecond)
-	log.Println("Audio Serial Port Opened")
+	log.Println("✅ Serial Audio port opened")
 
 	// 2. PulseAudio Setup
 	ss := pulse.SampleSpec{
@@ -57,14 +59,14 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc) {
 		Channels: channels}
 	capture, err := pulse.Capture("SIMCom", "Mic", &ss)
 	if err != nil {
-		log.Printf("Capture Error: %v", err)
+		log.Printf("⚠️ Acquire capture device error: %v", err)
 		serialPort.Close()
 		cancel()
 		return
 	}
 	playback, err := pulse.Playback("SIMCom", "Speaker", &ss)
 	if err != nil {
-		log.Printf("Playback Error: %v", err)
+		log.Printf("⚠️ Acquire playback device error: %v", err)
 		serialPort.Close()
 		capture.Free()
 		cancel()
@@ -73,25 +75,53 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc) {
 
 	// Mic -> Serial
 	wg.Go(func() {
-		defer cancel()
 		buf := make([]byte, frameSize)
+
+		defer func() {
+			log.Println("ℹ️  Mic -> Serial loop stopped...")
+		}()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(sa.capture_delay):
-				n, err := capture.Read(buf)
+			default:
+				var n int
+				var err error
+				var captured_n chan int
+				var captured_err chan error
+
+				go func() {
+					n, err := capture.Read(buf)
+					captured_n <- n
+					captured_err <- err
+				}()
+
+				select {
+				case n = <-captured_n:
+				case err = <-captured_err:
+				case <-ctx.Done():
+					return
+				}
+
 				if err != nil {
 					if ctx.Err() == nil {
-						log.Printf("Mic Read Error: %v", err)
+						log.Printf("⚠️ Mic Read Error: %v", err)
 					}
 					return
+				}
+
+				if current_call != nil && current_call.Mute {
+					// Overwrite the buffer with zeros
+					for i := range n {
+						buf[i] = 0
+					}
 				}
 				if n > 0 {
 					_, err := serialPort.Write(buf[:n])
 					if err != nil {
 						if ctx.Err() == nil {
-							log.Printf("Serial Write Error: %v", err)
+							log.Printf("⚠️ Serial Write Error: %v", err)
 						}
 						return
 					}
@@ -102,23 +132,47 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc) {
 
 	// Serial -> Speaker
 	wg.Go(func() {
-		defer cancel()
 		tempBuf := make([]byte, frameSize)
 		var remainder []byte
+
+		defer func() {
+			log.Println("ℹ️  Serial -> Speaker loop stopped...")
+		}()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(sa.capture_delay):
-				n, err := serialPort.Read(tempBuf)
-				if err != nil {
+			default:
+				type readRes struct {
+					n   int
+					err error
+				}
+				resCh := make(chan readRes, 1)
+
+				go func() {
+					n, err := serialPort.Read(tempBuf)
+					resCh <- readRes{n, err}
+				}()
+
+				var read_n int
+				var read_err error
+				select {
+				case res := <-resCh:
+					read_n = res.n
+					read_err = res.err
+				case <-ctx.Done():
+					return
+				}
+
+				if read_err != nil {
 					if ctx.Err() == nil {
-						log.Printf("Serial Read Error: %v", err)
+						log.Printf("⚠️ Serial Read Error: %v", read_err)
 					}
 					return
 				}
-				if n > 0 {
-					data := append(remainder, tempBuf[:n]...)
+
+				if read_n > 0 {
+					data := append(remainder, tempBuf[:read_n]...)
 					if len(data)%2 != 0 {
 						remainder = []byte{data[len(data)-1]}
 						data = data[:len(data)-1]
@@ -127,10 +181,20 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc) {
 					}
 					if len(data) > 0 {
 
-						// Software amplification (3x gain)
+						// Calculate gain based on volume
+						var gain float64 = 3.0
+						if current_call != nil {
+							vol := current_call.Volume
+							if vol <= 0.5 {
+								gain = 2.0 * vol
+							} else {
+								gain = 4.0*vol - 1.0
+							}
+						}
+
 						for i := 0; i < len(data); i += 2 {
 							sample := int16(uint16(data[i]) | uint16(data[i+1])<<8)
-							val := int32(sample) * 3
+							val := int32(float64(sample) * gain)
 							if val > 32767 {
 								val = 32767
 							} else if val < -32768 {
@@ -141,10 +205,28 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc) {
 							data[i+1] = byte(sample >> 8)
 						}
 
-						_, err := playback.Write(data)
-						if err != nil {
+						type writeRes struct {
+							n   int
+							err error
+						}
+						writeCh := make(chan writeRes, 1)
+
+						go func(d []byte) {
+							n, err := playback.Write(d)
+							writeCh <- writeRes{n, err}
+						}(data)
+
+						var write_err error
+						select {
+						case res := <-writeCh:
+							write_err = res.err
+						case <-ctx.Done():
+							return
+						}
+
+						if write_err != nil {
 							if ctx.Err() == nil {
-								log.Printf("Speaker Write Error: %v", err)
+								log.Printf("⚠️ Speaker Write Error: %v", write_err)
 							}
 							return
 						}
@@ -157,12 +239,28 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc) {
 	// Monitor context to close resources
 	go func() {
 		<-ctx.Done()
-		log.Println("Context cancelled, closing audio resources...")
+		log.Println("ℹ️  Context cancelled, closing audio resources...")
 		serialPort.Close()
-		wg.Wait()
-		log.Println("Wait complete, freeing audio resources...")
-		capture.Free()
-		playback.Free()
-		log.Println("Audio resources freed.")
+
+		// Wait for goroutines to finish with a timeout
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			log.Println("ℹ️  Audio resources closed successfully.")
+		case <-time.After(100 * time.Millisecond):
+			log.Println("ℹ️  Wait timed out, forcing free of audio resources...")
+		}
+
+		// Free audio resources in a separate goroutine to prevent blocking
+		go func() {
+			capture.Free()
+			playback.Free()
+			log.Println("✅ Audio resources freed.")
+		}()
 	}()
 }

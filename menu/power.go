@@ -16,9 +16,10 @@ type PowerMenu struct {
 	wg         sync.WaitGroup
 	exit       bool
 	options    [][]string
+	stackIndex int
 }
 
-func (m *Menu) NewPowerMenu() *PowerMenu {
+func (m *Menu) NewPowerMenu() MenuInstance {
 	return &PowerMenu{
 		parent: m,
 		options: [][]string{
@@ -45,6 +46,40 @@ func (instance *PowerMenu) Configure() {
 
 func (instance *PowerMenu) ConfigureWithArgs(args ...any) {
 	instance.Configure()
+}
+
+func (instance *PowerMenu) Pause() {
+	Pause(instance)
+}
+
+func (instance *PowerMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *PowerMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *PowerMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *PowerMenu) Cleanup() {
+	instance.exit = false
+}
+
+func (instance *PowerMenu) Save() {}
+
+func (instance *PowerMenu) Load() {}
+
+func (instance *PowerMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *PowerMenu) GetStackIndex() int {
+	return instance.stackIndex
 }
 
 func (instance *PowerMenu) Run() {
@@ -139,26 +174,4 @@ func (instance *PowerMenu) Run() {
 		go m.Pop()
 		return
 	}
-}
-
-func (instance *PowerMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Power menu pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *PowerMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Power menu stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		go instance.cleanup()
-	}
-}
-
-func (instance *PowerMenu) cleanup() {
-	instance.exit = false
 }

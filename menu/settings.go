@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wifx/gonetworkmanager/v3"
+	"github.com/google/uuid"
 	"tinygo.org/x/bluetooth"
 )
 
@@ -28,6 +29,7 @@ type SettingsMenu struct {
 	cancelFn       context.CancelFunc
 	parent         *Menu
 	wg             sync.WaitGroup
+	id             uuid.UUID
 	options        [][]string
 	adapter        *bluetooth.Adapter
 	ap_cache       map[string]gonetworkmanager.AccessPoint
@@ -35,70 +37,11 @@ type SettingsMenu struct {
 	bt_cache       map[string]string
 	current_target string
 	default_args   *SelectorArgs
-}
-
-func (instance *SettingsMenu) Label() string {
-	return "Settings Menu"
-}
-
-// RenderAbout renders the about screen, which displays the logo and version
-// of the Rakian OS. It also shows a line for checking for updates.
-func (instance *SettingsMenu) RenderAbout() {
-	m := instance.parent
-	display := m.Display
-
-	defer display.Unlock()
-	display.Lock()
-
-	display.Clear(display.Primary())
-	m.RenderHeader("About")
-
-	font := display.Use_Font_Small_Plain()
-	display.DrawTextAligned(0, 10, font, "Rakian OS", false, gfx.AlignNone, gfx.AlignNone)
-	display.DrawTextAligned(0, 19, font, fmt.Sprintf("v%s", m.Get("FirmwareVersion").(string)), false, gfx.AlignNone, gfx.AlignNone)
-	display.DrawTextAligned(0, 28, font, misc.GetOSVersion(), false, gfx.AlignNone, gfx.AlignNone)
-
-	m.RenderFooter("Return", true)
-	display.Render()
-}
-
-// RenderInternetStatus renders the internet status screen, which displays the
-// current network status message and the network information such as
-// the WiFi SSID and the IP address of the network connection. It
-// also shows the "Return" button.
-func (instance *SettingsMenu) RenderInternetStatus(state_msg string, network_info gonetworkmanager.ActiveConnection) {
-	m := instance.parent
-	display := m.Display
-
-	defer display.Unlock()
-	display.Lock()
-
-	display.Clear(display.Primary())
-	m.RenderHeader("Internet Status")
-
-	font := display.Use_Font_Small_Plain()
-	display.DrawTextAligned(0, 8, font, state_msg, false, gfx.AlignNone, gfx.AlignNone)
-
-	if net_conn, err := network_info.GetPropertyID(); err == nil {
-		display.DrawTextAligned(0, 16, font, net_conn, false, gfx.AlignNone, gfx.AlignNone)
-	}
-
-	if net_ipv4_cfg, err := network_info.GetPropertyIP4Config(); err == nil {
-		net_ipv4_addrs, err := net_ipv4_cfg.GetPropertyAddresses()
-		if err == nil {
-			net_ipv4_addr := net_ipv4_addrs[0].Address
-			net_ipv4_addr += "/" + fmt.Sprint(net_ipv4_addrs[0].Prefix)
-			display.DrawTextAligned(0, 24, font, net_ipv4_addr, false, gfx.AlignNone, gfx.AlignNone)
-			display.DrawTextAligned(0, 32, font, net_ipv4_addrs[0].Gateway, false, gfx.AlignNone, gfx.AlignNone)
-		}
-	}
-
-	m.RenderFooter("Return", true)
-	display.Render()
+	stackIndex     int
 }
 
 // NewSettingsMenu returns a new SettingsMenu instance with the given parent and default settings.
-func (m *Menu) NewSettingsMenu() *SettingsMenu {
+func (m *Menu) NewSettingsMenu() MenuInstance {
 
 	adapter := bluetooth.DefaultAdapter
 	if err := adapter.Enable(); err != nil {
@@ -162,6 +105,10 @@ func (m *Menu) NewSettingsMenu() *SettingsMenu {
 	}
 }
 
+func (instance *SettingsMenu) Label() string {
+	return "Settings Menu"
+}
+
 // Configure resets the context and prepares the menu to be run. It should
 // be called before running the menu. It will panic if the menu is
 // already configured.
@@ -171,12 +118,143 @@ func (instance *SettingsMenu) Configure() {
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
-// SettingsMain is the main entry point for the settings menu.
+func (instance *SettingsMenu) ConfigureWithArgs(args ...any) {
+	// Unused
+	instance.Configure()
+}
+
+func (instance *SettingsMenu) Pause() {
+	Pause(instance)
+}
+
+func (instance *SettingsMenu) Stop() {
+	Stop(instance)
+}
+
+func (instance *SettingsMenu) Cancel() {
+	if instance.cancelFn != nil {
+		instance.cancelFn()
+	}
+}
+
+func (instance *SettingsMenu) WaitGroup() *sync.WaitGroup {
+	return &instance.wg
+}
+
+func (instance *SettingsMenu) Cleanup() {
+	instance.ap_cache = nil
+	instance.conn_cache = nil
+	instance.bt_cache = nil
+}
+
+func (instance *SettingsMenu) Save() {}
+
+func (instance *SettingsMenu) Load() {}
+
+func (instance *SettingsMenu) SetStackIndex(i int) {
+	instance.stackIndex = i
+}
+
+func (instance *SettingsMenu) GetStackIndex() int {
+	return instance.stackIndex
+}
+
+func (instance *SettingsMenu) Run() {
+	if !instance.configured {
+		panic("Attempted to call (*SettingsMenu).Run() before (*SettingsMenu).Configure()!")
+	}
+
+	m := instance.parent
+	display := m.Display
+
+	if display.TryLock() {
+		display.Unlock()
+	}
+
+	log.Println("⚙️ Settings started")
+
+	for {
+		selection := m.ShowSelector(*instance.default_args, instance.ctx)
+		if selection == nil {
+			m.Pop()
+			return
+		}
+
+		if selection.SelectionClass == "settings.main" {
+			action := instance.settingsMain(selection.SelectionPath)
+			switch action {
+			case SettingsActionExit:
+				m.Pop()
+				return
+			case SettingsActionSubmenuPushed:
+				// Do nothing
+			}
+		}
+	}
+}
+
+// renderAbout renders the about screen, which displays the logo and version
+// of the Rakian OS. It also shows a line for checking for updates.
+func (instance *SettingsMenu) renderAbout() {
+	m := instance.parent
+	display := m.Display
+
+	defer display.Unlock()
+	display.Lock()
+
+	display.Clear(display.Primary())
+	m.RenderHeader("About")
+
+	font := display.Use_Font_Small_Plain()
+	display.DrawTextAligned(0, 10, font, "Rakian OS", false, gfx.AlignNone, gfx.AlignNone)
+	display.DrawTextAligned(0, 19, font, fmt.Sprintf("v%s", m.Get("FirmwareVersion").(string)), false, gfx.AlignNone, gfx.AlignNone)
+	display.DrawTextAligned(0, 28, font, misc.GetOSVersion(), false, gfx.AlignNone, gfx.AlignNone)
+
+	m.RenderFooter("Return", true)
+	display.Render()
+}
+
+// renderInternetStatus renders the internet status screen, which displays the
+// current network status message and the network information such as
+// the WiFi SSID and the IP address of the network connection. It
+// also shows the "Return" button.
+func (instance *SettingsMenu) renderInternetStatus(state_msg string, network_info gonetworkmanager.ActiveConnection) {
+	m := instance.parent
+	display := m.Display
+
+	defer display.Unlock()
+	display.Lock()
+
+	display.Clear(display.Primary())
+	m.RenderHeader("Internet Status")
+
+	font := display.Use_Font_Small_Plain()
+	display.DrawTextAligned(0, 8, font, state_msg, false, gfx.AlignNone, gfx.AlignNone)
+
+	if net_conn, err := network_info.GetPropertyID(); err == nil {
+		display.DrawTextAligned(0, 16, font, net_conn, false, gfx.AlignNone, gfx.AlignNone)
+	}
+
+	if net_ipv4_cfg, err := network_info.GetPropertyIP4Config(); err == nil {
+		net_ipv4_addrs, err := net_ipv4_cfg.GetPropertyAddresses()
+		if err == nil {
+			net_ipv4_addr := net_ipv4_addrs[0].Address
+			net_ipv4_addr += "/" + fmt.Sprint(net_ipv4_addrs[0].Prefix)
+			display.DrawTextAligned(0, 24, font, net_ipv4_addr, false, gfx.AlignNone, gfx.AlignNone)
+			display.DrawTextAligned(0, 32, font, net_ipv4_addrs[0].Gateway, false, gfx.AlignNone, gfx.AlignNone)
+		}
+	}
+
+	m.RenderFooter("Return", true)
+	display.Render()
+}
+
+// settingsMain is the main entry point for the settings menu.
 // It will switch on the last element of the selection path and
 // call the corresponding method based on the selection class and element.
 // For example, if the selection path is ["Phone Settings", "Language"],
 // it will call the Language method.
-func (instance *SettingsMenu) SettingsMain(selection_path []string) int {
+func (instance *SettingsMenu) settingsMain(selection_path []string) int {
 	switch selection_path[len(selection_path)-1] {
 
 	case "About":
@@ -213,7 +291,7 @@ func (instance *SettingsMenu) SettingsMain(selection_path []string) int {
 func (instance *SettingsMenu) handleAbout() int {
 	m := instance.parent
 	log.Println("⚙️ Showing About screen...")
-	instance.RenderAbout()
+	instance.renderAbout()
 	for {
 		select {
 		case <-instance.ctx.Done():
@@ -243,13 +321,13 @@ func (instance *SettingsMenu) handleAbout() int {
 func (instance *SettingsMenu) handleInternetStatus() int {
 	m := instance.parent
 	log.Println("⚙️ Showing internet status screen...")
-	instance.RenderInternetStatus(instance.GetNetworkState(), instance.GetNetworkInfo())
+	instance.renderInternetStatus(instance.getNetworkState(), instance.getNetworkInfo())
 	for {
 		select {
 		case <-instance.ctx.Done():
 			return SettingsActionSubmenuPushed
 		case <-time.After(500 * time.Millisecond):
-			instance.RenderInternetStatus(instance.GetNetworkState(), instance.GetNetworkInfo())
+			instance.renderInternetStatus(instance.getNetworkState(), instance.getNetworkInfo())
 		case evt := <-m.KeypadEvents:
 			if !evt.State {
 				continue
@@ -544,7 +622,7 @@ func (instance *SettingsMenu) handlePairDevice() int {
 		PersistLastState: false,
 	}, instance.ctx)
 	if selection != nil {
-		instance.BluetoothPair(selection.SelectionPath)
+		instance.bluetoothPair(selection.SelectionPath)
 	}
 	return SettingsActionShowSelector
 }
@@ -807,73 +885,10 @@ func (instance *SettingsMenu) handleBtSavedAction(selection_path []string) {
 	}
 }
 
-func (instance *SettingsMenu) Run() {
-	if !instance.configured {
-		panic("Attempted to call (*SettingsMenu).Run() before (*SettingsMenu).Configure()!")
-	}
-
-	m := instance.parent
-	display := m.Display
-
-	if display.TryLock() {
-		display.Unlock()
-	}
-
-	log.Println("⚙️ Settings started")
-
-	for {
-		selection := m.ShowSelector(*instance.default_args, instance.ctx)
-		if selection == nil {
-			m.Pop()
-			return
-		}
-
-		if selection.SelectionClass == "settings.main" {
-			action := instance.SettingsMain(selection.SelectionPath)
-			switch action {
-			case SettingsActionExit:
-				m.Pop()
-				return
-			case SettingsActionSubmenuPushed:
-				// Do nothing
-			}
-		}
-	}
-}
-
-func (instance *SettingsMenu) ConfigureWithArgs(args ...any) {
-	instance.Configure()
-}
-
 // Helper to handle the saved network action since we need state persistence
 // We will modify the `settings.wifi_saved` case to store the selection.
 // And we need to modify the struct to hold `current_target`.
-
-func (instance *SettingsMenu) Pause() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Settings handler pause timed out — goroutines may be stuck")
-		// Optional: escalate here
-	}
-}
-
-func (instance *SettingsMenu) Stop() {
-	instance.cancelFn()
-	if ok := waitWithTimeout(&instance.wg, 1*time.Second); !ok {
-		log.Println("⚠️ Settings handler stop timed out — goroutines may be stuck")
-		// Optional: escalate here
-	} else {
-		go instance.cleanup()
-	}
-}
-
-func (instance *SettingsMenu) cleanup() {
-	instance.ap_cache = nil
-	instance.conn_cache = nil
-	instance.bt_cache = nil
-}
-
-func (instance *SettingsMenu) GetNetworkState() string {
+func (instance *SettingsMenu) getNetworkState() string {
 	state, _ := instance.parent.NetworkManager.GetPropertyState()
 	var state_msg string
 
@@ -913,7 +928,7 @@ func (instance *SettingsMenu) GetNetworkState() string {
 	return state_msg
 }
 
-func (instance *SettingsMenu) GetNetworkInfo() gonetworkmanager.ActiveConnection {
+func (instance *SettingsMenu) getNetworkInfo() gonetworkmanager.ActiveConnection {
 	wifi_network, err := instance.parent.NetworkManager.GetPropertyPrimaryConnection()
 	if err != nil {
 		panic(err)
@@ -921,13 +936,13 @@ func (instance *SettingsMenu) GetNetworkInfo() gonetworkmanager.ActiveConnection
 	return wifi_network
 }
 
-// BluetoothPair is a helper function for SettingsMenu that handles
+// bluetoothPair is a helper function for SettingsMenu that handles
 // the pairing process after a user has selected a device to pair
 // with. It is called when the user selects a device from the
 // list of available devices. It will initiate the pairing process
 // and then re-render the main menu. For now, it just confirms
 // the selection and re-renders the main menu.
-func (instance *SettingsMenu) BluetoothPair(selection_path []string) {
+func (instance *SettingsMenu) bluetoothPair(selection_path []string) {
 	m := instance.parent
 	if len(selection_path) > 0 {
 		selection := selection_path[0]
