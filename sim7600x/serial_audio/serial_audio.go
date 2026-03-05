@@ -73,9 +73,17 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, curre
 		return
 	}
 
+	// Define heartbeat interval
+	const heartbeat_delay = 5 * time.Second
+
 	// Mic -> Serial
 	wg.Go(func() {
 		buf := make([]byte, frameSize)
+		last_read_counter := 0
+		last_read_tstamp := time.Now()
+
+		last_write_counter := 0
+		last_write_tstamp := time.Now()
 
 		defer func() {
 			log.Println("ℹ️  Mic -> Serial loop stopped...")
@@ -88,8 +96,8 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, curre
 			default:
 				var n int
 				var err error
-				var captured_n chan int
-				var captured_err chan error
+				captured_n := make(chan int, 1)
+				captured_err := make(chan error, 1)
 
 				go func() {
 					n, err := capture.Read(buf)
@@ -111,20 +119,26 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, curre
 					return
 				}
 
-				if current_call != nil && current_call.Mute {
-					// Overwrite the buffer with zeros
-					for i := range n {
-						buf[i] = 0
-					}
+				last_read_counter += n
+				if time.Since(last_read_tstamp) > heartbeat_delay {
+					last_read_tstamp = time.Now()
+					log.Printf("❤️  Mic -> Serial Heartbeat: %d bytes read from capture", last_read_counter)
+					last_read_counter = 0
 				}
-				if n > 0 {
-					_, err := serialPort.Write(buf[:n])
-					if err != nil {
-						if ctx.Err() == nil {
-							log.Printf("⚠️ Serial Write Error: %v", err)
-						}
-						return
+
+				write_n, err := serialPort.Write(buf[:n])
+				if err != nil {
+					if ctx.Err() == nil {
+						log.Printf("⚠️ Serial Write Error: %v", err)
 					}
+					return
+				}
+
+				last_write_counter += write_n
+				if time.Since(last_write_tstamp) > heartbeat_delay {
+					last_write_tstamp = time.Now()
+					log.Printf("❤️  Mic -> Serial Heartbeat: %d bytes written to serial", last_write_counter)
+					last_write_counter = 0
 				}
 			}
 		}
@@ -134,6 +148,10 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, curre
 	wg.Go(func() {
 		tempBuf := make([]byte, frameSize)
 		var remainder []byte
+		last_read_counter := 0
+		last_read_tstamp := time.Now()
+		last_write_counter := 0
+		last_write_tstamp := time.Now()
 
 		defer func() {
 			log.Println("ℹ️  Serial -> Speaker loop stopped...")
@@ -169,6 +187,13 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, curre
 						log.Printf("⚠️ Serial Read Error: %v", read_err)
 					}
 					return
+				}
+
+				last_read_counter += read_n
+				if time.Since(last_read_tstamp) > heartbeat_delay {
+					last_read_tstamp = time.Now()
+					log.Printf("❤️  Serial -> Speaker Heartbeat: %d bytes read for playback", last_read_counter)
+					last_read_counter = 0
 				}
 
 				if read_n > 0 {
@@ -216,9 +241,11 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, curre
 							writeCh <- writeRes{n, err}
 						}(data)
 
+						var write_n int
 						var write_err error
 						select {
 						case res := <-writeCh:
+							write_n = res.n
 							write_err = res.err
 						case <-ctx.Done():
 							return
@@ -229,6 +256,13 @@ func (sa *SerialAudio) Run(ctx context.Context, cancel context.CancelFunc, curre
 								log.Printf("⚠️ Speaker Write Error: %v", write_err)
 							}
 							return
+						}
+
+						last_write_counter += write_n
+						if time.Since(last_write_tstamp) > heartbeat_delay {
+							last_write_tstamp = time.Now()
+							log.Printf("❤️  Serial -> Speaker Heartbeat: %d bytes written to playback", last_write_counter)
+							last_write_counter = 0
 						}
 					}
 				}
