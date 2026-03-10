@@ -10,6 +10,7 @@ import (
 	// "hardware_keypad"
 	// "sim7600x"
 	// "pcd8544"
+	"eg25_g"
 
 	"misc"
 	"simulator"
@@ -63,7 +64,7 @@ func main() {
 	vio := simulator.New()
 	display := vio.Display()
 	keypad := vio.Keypad()
-	phone := vio.Phone()
+	// phone := vio.Phone()
 
 	lcd_powerdown := func() {
 		display.Clear(display.Primary())
@@ -95,6 +96,7 @@ func main() {
 	// hardware_kp := hardware_keypad.New()
 	// rawKeypadEvents := hardware_kp.Run(ctx, debug)
 
+	phone := eg25_g.New(debug, database)
 	rawKeypadEvents := vio.Run(ctx, debug)
 
 	// Run main thread

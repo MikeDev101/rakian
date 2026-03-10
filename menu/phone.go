@@ -411,14 +411,14 @@ func (instance *PhoneMenu) Run() {
 
 								dtmf := m.InputPrompt(InputPromptArgs{Title: "DTMF", PhoneNumberOnly: true}, instance.ctx)
 								if dtmf != "" {
-									m.Phone.SendDTMF(current_call, dtmf)
+									go m.Phone.SendDTMF(current_call, dtmf)
 								}
 							}()
 
 						case "Send string":
 							dtmf := m.InputPrompt(InputPromptArgs{Title: "DTMF", PhoneNumberOnly: true}, instance.ctx)
 							if dtmf != "" {
-								m.Phone.SendDTMF(current_call, dtmf)
+								go m.Phone.SendDTMF(current_call, dtmf)
 							}
 						case "End all calls":
 							m.Phone.HangupAll()
@@ -440,7 +440,7 @@ func (instance *PhoneMenu) Run() {
 					default:
 						go m.playDTMF(evt.Key)
 						if m.Phone.OK() {
-							m.Phone.SendDTMF(current_call, string(evt.Key))
+							go m.Phone.SendDTMF(current_call, string(evt.Key))
 						}
 					}
 				} else { // Key Release
