@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"gfx"
+	"misc"
 	"timers"
 )
 
-type HomeMenu struct {
+type HomeAlert struct {
 	ctx         context.Context
 	configured  bool
 	cancelFn    context.CancelFunc
@@ -21,60 +22,60 @@ type HomeMenu struct {
 	stackIndex  int
 }
 
-func (m *Menu) NewHomeMenu() MenuInstance {
-	return &HomeMenu{
+func (m *Menu) NewHomeAlert() MenuInstance {
+	return &HomeAlert{
 		parent: m,
 	}
 }
 
-func (instance *HomeMenu) Label() string {
+func (instance *HomeAlert) Label() string {
 	return "Home Menu"
 }
 
-func (instance *HomeMenu) Configure() {
+func (instance *HomeAlert) Configure() {
 	// Reset context
 	instance.configured = true
 	instance.ctx, instance.cancelFn = context.WithCancel(instance.parent.GlobalContext)
 }
 
-func (instance *HomeMenu) ConfigureWithArgs(args ...any) {
+func (instance *HomeAlert) ConfigureWithArgs(args ...any) {
 	// Unused
 	instance.Configure()
 }
 
-func (instance *HomeMenu) Pause() {
+func (instance *HomeAlert) Pause() {
 	Pause(instance)
 }
 
-func (instance *HomeMenu) Stop() {
+func (instance *HomeAlert) Stop() {
 	Stop(instance)
 }
 
-func (instance *HomeMenu) Cancel() {
+func (instance *HomeAlert) Cancel() {
 	if instance.cancelFn != nil {
 		instance.cancelFn()
 	}
 }
 
-func (instance *HomeMenu) WaitGroup() *sync.WaitGroup {
+func (instance *HomeAlert) WaitGroup() *sync.WaitGroup {
 	return &instance.wg
 }
 
-func (instance *HomeMenu) Cleanup() {}
+func (instance *HomeAlert) Cleanup() {}
 
-func (instance *HomeMenu) Save() {}
+func (instance *HomeAlert) Save() {}
 
-func (instance *HomeMenu) Load() {}
+func (instance *HomeAlert) Load() {}
 
-func (instance *HomeMenu) SetStackIndex(i int) {
+func (instance *HomeAlert) SetStackIndex(i int) {
 	instance.stackIndex = i
 }
 
-func (instance *HomeMenu) GetStackIndex() int {
+func (instance *HomeAlert) GetStackIndex() int {
 	return instance.stackIndex
 }
 
-func (instance *HomeMenu) render() {
+func (instance *HomeAlert) render() {
 	m := instance.parent
 	display := m.Display
 
@@ -85,40 +86,36 @@ func (instance *HomeMenu) render() {
 	m.RenderStateCommon()
 	m.RenderClock()
 
-	if m.Phone.OK() {
-		if m.Phone.IsSOS() {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "SOS", false, gfx.AlignCenter, gfx.AlignBelow)
-		} else if m.Phone.IsFlightMode() {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Flight mode", false, gfx.AlignCenter, gfx.AlignBelow)
-		} else if !m.Phone.IsRegistered() {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Bold(), "No service", false, gfx.AlignCenter, gfx.AlignBelow)
-		} else {
-			display.DrawTextAligned(42, 8, display.Use_Font_Small_Bold(), m.Phone.GetCarrier(), false, gfx.AlignCenter, gfx.AlignBelow)
-		}
+	font := display.Use_Font_Small_Bold()
 
-		if m.Phone.IsRoaming() {
-			display.DrawTextAligned(42, 17, display.Use_Font_Small_Plain(), "Roaming", false, gfx.AlignCenter, gfx.AlignBelow)
-		}
-	} else {
-		display.DrawTextAligned(42, 8, display.Use_Font_Small_Plain(), "Insert SIM card", false, gfx.AlignCenter, gfx.AlignBelow)
-	}
+	// TODO: make this dynamic
+	label := "1 message received"
+
+	display.DrawTextWrapped(8, 8, 78, 38, font, label, false, gfx.AlignNone, gfx.AlignNone)
 
 	if m.Get("KeypadLocked").(bool) {
 		display.DrawImageAligned(display.Use_Sprites()["keypad_locked"], 8, 0, gfx.AlignRight, gfx.AlignBelow)
 		m.RenderFooter("Unlock", true)
 	} else {
-		m.RenderFooter("Menu", true)
+		m.RenderFooter("Read", true)
 	}
 
 	display.Render()
 }
 
-func (instance *HomeMenu) Run() {
+func (instance *HomeAlert) Run() {
+	m := instance.parent
 	if !instance.configured {
-		panic("Attempted to call (*HomeMenu).Run() before (*HomeMenu).Configure()!")
+		panic("Attempted to call (*HomeAlert).Run() before (*HomeAlert).Configure()!")
 	}
 
 	instance.render()
+
+	if m.Get("BeepOnly").(bool) || m.Get("CanRing").(bool) {
+		instance.wg.Go(func() {
+			misc.PlayBeep(m.Player, instance.ctx)
+		})
+	}
 
 	// Main render loop
 	instance.wg.Add(1)
@@ -169,35 +166,25 @@ func (instance *HomeMenu) Run() {
 							return
 						}
 					case 'S':
-						if keypad_locked {
+						if !keypad_locked {
 							go instance.parent.PlayKey()
-							go instance.parent.ToMenu("keypad_unlock")
+							// TODO: jump to message inbox
+							go instance.parent.Pop()
+							// go instance.parent.ToMenu("keypad_unlock")
 							return
-						}
-
-						if !keypad_locked {
-							go instance.parent.PlayKey()
-							go instance.parent.Push("home_selection")
-							return
-						}
-					case 'U':
-						if !keypad_locked {
-							go instance.parent.PlayKey()
-							// TODO: cycle between different home menus
-						}
-					case 'D':
-						if !keypad_locked {
-							go instance.parent.PlayKey()
-							// TODO: cycle between different home menus
 						}
 					case 'C':
 						if !keypad_locked {
 							go instance.parent.PlayKey()
+							go instance.parent.Pop()
+							// return to home screen
+							return
 						}
 					default:
 						if !keypad_locked {
-							go instance.parent.PushWithArgs("dialer", evt.Key)
-							return
+							// stub
+							go instance.parent.PlayKey()
+							// go instance.parent.PushWithArgs("dialer", evt.Key)
 						}
 					}
 				}

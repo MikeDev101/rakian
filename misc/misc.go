@@ -16,6 +16,9 @@ import (
 	"tones"
 )
 
+const BATTERY_PATH = "/sys/class/power_supply/BAT0"
+const CHARGER_PATH = "/sys/class/power_supply/ACAD"
+
 func EnablePowerbutton() {
 	cmd := exec.Command("enable_poweroff")
 	err := cmd.Run()
@@ -69,7 +72,6 @@ func SoftReboot() {
 	os.Exit(0)
 }
 
-
 func SleepWithContext(duration time.Duration, ctx context.Context) {
 	timer := time.NewTimer(duration)
 	select {
@@ -108,19 +110,19 @@ func PlayDeadBattery(player *tones.Tones, ctx context.Context) {
 
 func PlayRingtone(player *tones.Tones, ctx context.Context) {
 	notes := []tones.Note{
-		{Key: 88, Duration: 150 * time.Millisecond, Divider: 1}, // E7
-		{Key: 86, Duration: 150 * time.Millisecond, Divider: 1}, // D#7 / Eb7
-		{Key: 78, Duration: 300 * time.Millisecond, Divider: 1}, // G#6 / Ab6
-		{Key: 80, Duration: 300 * time.Millisecond, Divider: 1}, // A#6 / Bb6
-		{Key: 85, Duration: 150 * time.Millisecond, Divider: 1}, // D7
-		{Key: 83, Duration: 150 * time.Millisecond, Divider: 1}, // C#7 / Db7
-		{Key: 74, Duration: 300 * time.Millisecond, Divider: 1}, // D6
-		{Key: 76, Duration: 300 * time.Millisecond, Divider: 1}, // E6
-		{Key: 83, Duration: 150 * time.Millisecond, Divider: 1}, // C#7 / Db7
-		{Key: 81, Duration: 150 * time.Millisecond, Divider: 1}, // B6
-		{Key: 73, Duration: 300 * time.Millisecond, Divider: 1}, // C#6 / Db6
-		{Key: 76, Duration: 300 * time.Millisecond, Divider: 1}, // E6
-		{Key: 81, Duration: 600 * time.Millisecond, Divider: 1}, // B6
+		{Key: 88, Duration: 100 * time.Millisecond, Divider: 2}, // E7
+		{Key: 86, Duration: 100 * time.Millisecond, Divider: 2}, // D#7 / Eb7
+		{Key: 78, Duration: 250 * time.Millisecond, Divider: 2}, // G#6 / Ab6
+		{Key: 80, Duration: 250 * time.Millisecond, Divider: 2}, // A#6 / Bb6
+		{Key: 85, Duration: 100 * time.Millisecond, Divider: 2}, // D7
+		{Key: 83, Duration: 100 * time.Millisecond, Divider: 2}, // C#7 / Db7
+		{Key: 74, Duration: 250 * time.Millisecond, Divider: 2}, // D6
+		{Key: 76, Duration: 250 * time.Millisecond, Divider: 2}, // E6
+		{Key: 83, Duration: 100 * time.Millisecond, Divider: 2}, // C#7 / Db7
+		{Key: 81, Duration: 100 * time.Millisecond, Divider: 2}, // B6
+		{Key: 73, Duration: 250 * time.Millisecond, Divider: 2}, // C#6 / Db6
+		{Key: 76, Duration: 250 * time.Millisecond, Divider: 2}, // E6
+		{Key: 81, Duration: 500 * time.Millisecond, Divider: 2}, // B6
 		{Key: 0, Duration: 3 * time.Second, Divider: 1},         // NONE
 	}
 
@@ -152,8 +154,9 @@ func PlayBoot(player *tones.Tones, ctx context.Context) {
 
 func GetChargingStatus() (charging bool) {
 	// Read status
-	state, err := os.ReadFile("/sys/class/power_supply/charger/online")
+	state, err := os.ReadFile(fmt.Sprintf("%s/online", CHARGER_PATH)) // "/sys/class/power_supply/charger/online"
 	if err != nil {
+		log.Printf("⚠️ Failed to read charging status: %v\n", err)
 		return false
 	}
 	charging = strings.TrimSpace(string(state)) == "1"
@@ -162,7 +165,7 @@ func GetChargingStatus() (charging bool) {
 
 func GetBatteryStatus() (voltage float64, capacity int, capacity_scaled int, err error) {
 	// Read capacity
-	capacityBytes, err := os.ReadFile("/sys/class/power_supply/battery/capacity")
+	capacityBytes, err := os.ReadFile(fmt.Sprintf("%s/capacity", BATTERY_PATH)) // "/sys/class/power_supply/battery/capacity"
 	if err != nil {
 		return 0.0, 0, 0, fmt.Errorf("reading capacity failed: %w", err)
 	}
@@ -173,7 +176,7 @@ func GetBatteryStatus() (voltage float64, capacity int, capacity_scaled int, err
 	}
 
 	// Read voltage
-	voltageBytes, err := os.ReadFile("/sys/class/power_supply/battery/voltage_now")
+	voltageBytes, err := os.ReadFile(fmt.Sprintf("%s/voltage_now", BATTERY_PATH)) // "/sys/class/power_supply/battery/voltage_now"
 	if err != nil {
 		return 0.0, 0, 0, fmt.Errorf("reading voltage failed: %w", err)
 	}

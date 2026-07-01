@@ -100,9 +100,10 @@ func (instance *Menu) InputPrompt(args InputPromptArgs, ctx context.Context) str
 		display.DrawText(textStartX-scrollOffset, 20, font, string(input), false)
 
 		// Draw cursor
-		curX := float64(textStartX+cursorPx-scrollOffset) + 0.5
-		display.DrawLine(curX, 20, curX, 33)
-		display.Stroke()
+		curX := float64(textStartX + cursorPx - scrollOffset)
+		display.SetLineWidth(2)
+		display.DrawRectangle(curX, 20, 1, 13)
+		display.Fill()
 
 		// Draw bottom
 		if len(input) == 0 {

@@ -44,11 +44,11 @@ func (m *Menu) PlayAccepted() {
 
 func (m *Menu) PlayKey() {
 	if m.Get("BeepOnly").(bool) {
-		m.Player.Tone(81.5, 1)
+		m.Player.Tone(81.25, 5)
 		time.Sleep(50 * time.Millisecond)
 		m.Player.Stop()
 	} else if m.Get("CanRing").(bool) {
-		m.Player.Tone(81.5, 1)
+		m.Player.Tone(81.25, 5)
 		time.Sleep(150 * time.Millisecond)
 		m.Player.Stop()
 	}
@@ -91,11 +91,10 @@ func (m *Menu) RenderFooter(footer string, bold bool) {
 	display.DrawTextAligned(42, 48, font, footer, false, gfx.AlignCenter, gfx.AlignAbove)
 }
 
-func (m *Menu) RenderHeader(header string) {
+func (m *Menu) RenderHeader(header string, account_for_scrollbar bool) {
 	display := m.Display
 	font := display.Use_Font_Small_Plain()
 	width, _ := display.GetTextBounds(font, header)
-	display.DrawTextAligned(42, 0, font, header, false, gfx.AlignCenter, gfx.AlignBelow)
 
 	// If the header text is too long, limit the width to 84
 	if width > 84 {
@@ -106,11 +105,21 @@ func (m *Menu) RenderHeader(header string) {
 	left_start := 42 - (width / 2) - 2
 	right_start := 42 + (width / 2) + 1
 
+	right_end := 84
+	if account_for_scrollbar {
+		left_start -= 5
+		right_start -= 7
+		right_end -= 7
+		display.DrawTextAligned(36, 0, font, header, false, gfx.AlignCenter, gfx.AlignBelow)
+	} else {
+		display.DrawTextAligned(42, 0, font, header, false, gfx.AlignCenter, gfx.AlignBelow)
+	}
+
 	// Draw lines around the header text
 	display.SetColor(display.Secondary())
 	display.DrawRectangle(0, 3, float64(left_start), 1)
 	display.Fill()
-	display.DrawRectangle(float64(right_start), 3, float64(84-right_start), 1)
+	display.DrawRectangle(float64(right_start), 3, float64(right_end-right_start), 1)
 	display.Fill()
 }
 
@@ -135,7 +144,7 @@ func (instance *Menu) RenderStateCommon() {
 	m := instance
 	display := m.Display
 
-	// Draw icons
+	// Draw meter icons
 	if cell_sprite, ok := display.Use_Sprites()["cell"]; ok {
 		display.DrawImageAligned(cell_sprite, 0, 38, gfx.AlignRight, gfx.AlignAbove)
 	}
@@ -143,6 +152,7 @@ func (instance *Menu) RenderStateCommon() {
 		display.DrawImageAligned(battery_sprite, 84, 38, gfx.AlignLeft, gfx.AlignAbove)
 	}
 
+	// Render battery level meter
 	battery_state := m.Get("BatteryScaledPercent").(int)
 	if battery_state > 0 {
 		display.SetColor(display.Secondary())
@@ -165,6 +175,7 @@ func (instance *Menu) RenderStateCommon() {
 		}
 	}
 
+	// Render signal strength meter
 	if m.Phone.OK() {
 		display.SetColor(display.Secondary())
 		display.SetLineWidth(1)
@@ -185,6 +196,58 @@ func (instance *Menu) RenderStateCommon() {
 			display.Fill()
 		}
 	}
+
+	// Render indicator icons
+	x := 8
+	for _, indicator := range m.GetIndicators() {
+		if sprite, ok := display.Use_Sprites()[indicator]; ok {
+			w, _ := display.GetImageBounds(sprite)
+			display.DrawImageAligned(sprite, x, 0, gfx.AlignRight, gfx.AlignBelow)
+			x += w
+		}
+	}
+}
+
+// Populate indicators based on the phone and modem states, as well as temporary/persistent values
+
+func (instance *Menu) GetIndicators() []string {
+	indicators := []string{}
+
+	if instance == nil {
+		return indicators
+	}
+
+	// Shows when the phone is currently active
+	if instance.Get("PhoneActive").(bool) {
+		indicators = append(indicators, "phone")
+	}
+
+	// Don't render other indicators while phone is active
+	if !instance.Get("PhoneActive").(bool) {
+		if instance.Get("NewVoicemail").(bool) {
+			indicators = append(indicators, "vmail_0")
+		}
+
+		if instance.Get("NewMessage").(bool) {
+			indicators = append(indicators, "new_message")
+		}
+
+		if instance.Get("DivertsActive").(bool) {
+			indicators = append(indicators, "redirect")
+		}
+	}
+
+	// Always show the keypad locked indicator
+	if instance.Get("KeypadLocked").(bool) {
+		indicators = append(indicators, "keypad_locked")
+	}
+
+	// Always show the mute indicator if muted
+	if !instance.Get("BeepOnly").(bool) && !instance.Get("CanRing").(bool) {
+		indicators = append(indicators, "mute")
+	}
+
+	return indicators
 }
 
 func (instance *Menu) playDTMF(key rune) {

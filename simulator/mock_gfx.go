@@ -56,7 +56,6 @@ func (v *Simulator) Render() {
 	})
 }
 
-
 func (v *Simulator) Clear(c color.Color) {
 	v.ctx.SetColor(c)
 	v.ctx.Clear()
@@ -84,4 +83,7 @@ func (v *Simulator) DrawImageAligned(i *image.Image, x, y int, ha, va gfx.Render
 }
 func (v *Simulator) GetTextBounds(f map[rune]*image.Image, s string) (int, int) {
 	return gfx.GetTextBounds(f, s)
+}
+func (v *Simulator) GetImageBounds(i *image.Image) (int, int) {
+	return gfx.GetImageBounds(*i)
 }

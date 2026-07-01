@@ -168,6 +168,9 @@ func (d *PCD8544) DrawTextWrapped(x1, y1, x2, y2 int, f map[rune]*image.Image, s
 func (*PCD8544) GetTextBounds(f map[rune]*image.Image, s string) (int, int) {
 	return gfx.GetTextBounds(f, s)
 }
+func (d *PCD8544) GetImageBounds(i *image.Image) (int, int) {
+	return gfx.GetImageBounds(*i)
+}
 
 // SPI functions
 func (d *PCD8544) writeCommand(cmd byte) {

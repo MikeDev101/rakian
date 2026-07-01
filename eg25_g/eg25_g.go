@@ -65,6 +65,9 @@ type EG25_G struct {
 	sim_ok       bool
 	modem3gpp    modemmanager.Modem3gpp
 	modem3gpp_ok bool
+
+	subscribers   map[string]func(event modem.IMSEvent) error
+	subscribersMu sync.RWMutex
 }
 
 type callStateChange struct {
@@ -72,6 +75,37 @@ type callStateChange struct {
 	oldState modemmanager.MMCallState
 	newState modemmanager.MMCallState
 	reason   modemmanager.MMCallStateReason
+}
+
+func (m *EG25_G) Subscribe(callback func(event modem.IMSEvent) error) string {
+	m.subscribersMu.Lock()
+	defer m.subscribersMu.Unlock()
+	if m.subscribers == nil {
+		m.subscribers = make(map[string]func(modem.IMSEvent) error)
+	}
+	key := uuid.New().String()
+	m.subscribers[key] = callback
+	return key
+}
+
+func (m *EG25_G) Unsubscribe(key string) {
+	m.subscribersMu.Lock()
+	defer m.subscribersMu.Unlock()
+	if m.subscribers != nil {
+		delete(m.subscribers, key)
+	}
+}
+
+func (m *EG25_G) publish(event modem.IMSEvent) {
+	m.subscribersMu.RLock()
+	defer m.subscribersMu.RUnlock()
+	for _, callback := range m.subscribers {
+		go func(cb func(modem.IMSEvent) error) {
+			if err := cb(event); err != nil {
+				log.Printf("⚠️ Subscriber callback failed: %v", err)
+			}
+		}(callback)
+	}
 }
 
 func New(debug bool, db *gorm.DB) modem.Modem {
@@ -111,6 +145,7 @@ func New(debug bool, db *gorm.DB) modem.Modem {
 		return instance
 	}
 
+	log.Printf("Found modem: %s", modems[0].GetObjectPath())
 	instance.Modem = modems[0]
 	instance.ok = true
 
@@ -393,6 +428,7 @@ func (m *EG25_G) ListenToVvmdEvents() {
 					if msgPath, ok := signal.Body[0].(dbus.ObjectPath); ok {
 						log.Printf("📥 [VVM] New Voicemail Downloaded! Path: %s", msgPath)
 						m.ProcessNewVoicemail(conn, msgPath)
+						m.publish(modem.IMSEvent{Type: modem.IMS_New_Voicemail, Data: msgPath})
 					} else {
 						log.Printf("⚠️ Unexpected signal body format: %v", signal.Body)
 					}
@@ -409,6 +445,7 @@ func (m *EG25_G) ListenToVvmdEvents() {
 							if count, isUint := unreadVar.Value().(uint32); isUint {
 								log.Printf("🔔 [VVM] Unread Voicemails updated: %d", count)
 								m.unreadVoicemails = int(count)
+								m.publish(modem.IMSEvent{Type: modem.IMS_New_Voicemail, Data: count})
 							}
 						}
 					}
@@ -622,6 +659,10 @@ func (m *EG25_G) GetCarrierAndRoaming() {
 	if err != nil {
 		log.Printf("⚠️ Failed to get registration state: %v", err)
 	} else {
+		oldRegistered := m.registered
+		oldRoaming := m.roaming
+		oldSOS := m.sos
+		registrationChanged := false
 
 		switch regState {
 		case modemmanager.MmModem3gppRegistrationStateHome:
@@ -650,10 +691,29 @@ func (m *EG25_G) GetCarrierAndRoaming() {
 		default:
 			m.roaming = false
 		}
+
+		if m.registered != oldRegistered || m.roaming != oldRoaming || m.sos != oldSOS {
+			registrationChanged = true
+		}
+
 		log.Println("Registration state:", regState)
 		log.Println("Registered: ", m.registered)
 		log.Println("SOS: ", m.sos)
 		log.Println("Roaming: ", m.roaming)
+
+		if registrationChanged {
+			if m.sos {
+				m.publish(modem.IMSEvent{Type: modem.IMS_Registration_Emergency_Only})
+			} else if m.registered {
+				if m.roaming {
+					m.publish(modem.IMSEvent{Type: modem.IMS_Registration_Roaming, Data: m.carrier})
+				} else {
+					m.publish(modem.IMSEvent{Type: modem.IMS_Registration_Active, Data: m.carrier})
+				}
+			} else {
+				m.publish(modem.IMSEvent{Type: modem.IMS_Registration_Failure})
+			}
+		}
 	}
 }
 
@@ -820,6 +880,7 @@ func (m *EG25_G) ProcessEvents() {
 						go func() {
 							m.ringingChan <- session
 						}()
+						m.publish(modem.IMSEvent{Type: modem.IMS_Call_Incoming, Data: session})
 					}
 				}
 			}
@@ -837,13 +898,26 @@ func (m *EG25_G) ProcessEvents() {
 			call, _ := modemmanager.NewCall(event.path)
 			m.SaveCallStateEvent(call, event.path)
 			if session := m.calls[event.path]; session != nil {
+				oldState := session.State
 				session.State = event.newState
 
 				switch event.newState {
 				case modemmanager.MmCallStateActive:
 					session.StartTime = time.Now()
 					m.current_call = session
+					if oldState == modemmanager.MmCallStateHeld {
+						m.publish(modem.IMSEvent{Type: modem.IMS_Call_Unhheld, Data: session})
+					} else {
+						m.publish(modem.IMSEvent{Type: modem.IMS_Call_Connected, Data: session})
+					}
+				case modemmanager.MmCallStateHeld:
+					m.publish(modem.IMSEvent{Type: modem.IMS_Call_Held, Data: session})
+				case modemmanager.MmCallStateRingingIn:
+					m.publish(modem.IMSEvent{Type: modem.IMS_Call_Ringing_In, Data: session})
+				case modemmanager.MmCallStateRingingOut:
+					m.publish(modem.IMSEvent{Type: modem.IMS_Call_Ringing_Out, Data: session})
 				case modemmanager.MmCallStateTerminated:
+					m.publish(modem.IMSEvent{Type: modem.IMS_Call_Terminated, Data: session})
 					select {
 					case session.Ended <- true:
 					default:
@@ -865,6 +939,7 @@ func (m *EG25_G) ProcessEvents() {
 			// Instantiate the SMS to read it:
 			sms, _ := modemmanager.NewSms(smsPath)
 			m.SaveSMS(sms, smsPath)
+			m.publish(modem.IMSEvent{Type: modem.IMS_New_Message, Data: sms})
 
 		case state := <-m.modem_power_state_events:
 			log.Printf("🔋 [EVENT] Modem Power State Changed to: %d\n", state)
@@ -986,6 +1061,7 @@ func (m *EG25_G) PlaceCall(number string) (*modem.Call, error) {
 	}
 
 	log.Printf("📞 Call started successfully! DBus Path: %s", dbuspath)
+	m.publish(modem.IMSEvent{Type: modem.IMS_Call_Outgoing, Data: output})
 	return output, nil
 }
 
@@ -1230,6 +1306,11 @@ func (m *EG25_G) FindAlsaCard() string {
 			}
 		}
 	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("⚠️ Error reading /proc/asound/cards: %v", err)
+	}
+
 	return "plughw:0,0"
 }
 

@@ -289,7 +289,7 @@ func (instance *CalculatorMenu) render() {
 
 	display.Clear(display.Primary())
 
-	m.RenderHeader("Calculator")
+	m.RenderHeader("Calculator", false)
 	m.RenderFooter("Options", true)
 
 	display.DrawText(0, 12, display.Use_Font_Large_Bold(), instance.datastore.calc_displayed, false)

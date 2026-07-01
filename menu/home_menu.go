@@ -2,7 +2,6 @@ package menu
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -45,9 +44,11 @@ func (m *Menu) NewHomeSelectionMenu() MenuInstance {
 			{"Calculator", "calculator"},
 			{"Clock", "clock"},
 			{"Reminders", "reminders"},
+			{"Profiles", "profiles"},
 			{"Tones", "tones"},
 			{"SIM tools", "sim_tools"},
 			{"Drawing", "drawing"},
+			{"Radio", "radio"},
 		},
 	}
 }
@@ -204,30 +205,27 @@ func (instance *HomeSelectionMenu) render() {
 	display.Clear(display.Primary())
 	m.RenderFooter("Select", true)
 
-	font := display.Use_Font_Small_Bold()
-	display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", int(instance.datastore.selection+1)), false, gfx.AlignLeft, gfx.AlignNone)
-
-	font = display.Use_Font_Large_Bold()
+	font := display.Use_Font_Large_Bold()
 	display.DrawTextAligned(40, 8, font, label, false, gfx.AlignCenter, gfx.AlignBelow)
 
 	anim := instance.options[instance.datastore.selection][1]
+
+	m.RenderSelectorScrollbar(len(instance.options), instance.datastore.selection, true)
+
 	display.Render()
 	go display.PlayAnimation(instance.animCtx, anim, 40, 36, gfx.AlignCenter, gfx.AlignAbove)
 }
 
 func (instance *HomeSelectionMenu) handle_selection() {
 	go instance.parent.PlayKey()
-	selection := instance.options[instance.datastore.selection][0]
-	log.Printf("Selected: %s", selection)
-	switch selection {
-	case "Phone book":
-		go instance.parent.PopToMenu("phone_book")
-	case "Settings":
-		go instance.parent.PopToMenu("settings")
-	case "Calculator":
-		go instance.parent.PopToMenu("calculator")
-	default:
-		// Generic handler
+	menuID := instance.options[instance.datastore.selection][1]
+	log.Printf("Selected: %s", menuID)
+
+	if menuID == "sim_tools" || menuID == "drawing" {
+		// Not implemented yet
 		go instance.parent.Pop()
+		return
 	}
+
+	go instance.parent.PopToMenu(menuID)
 }

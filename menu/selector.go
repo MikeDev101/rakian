@@ -2,6 +2,8 @@ package menu
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"strings"
 
 	"gfx"
@@ -33,6 +35,8 @@ type SelectorArgs struct {
 	AllowNumberKeyShortcut bool
 	ShowTitle              bool
 	ShowPathInTitle        bool
+	ShowScrollbar          bool
+	ShowScrollbarPos       bool
 	AppendTextToElemNumber string
 	CustomRender           func()
 }
@@ -67,10 +71,18 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 	get_current_options := func() []string {
 		if len(state.path) == 0 {
 			// Root level: return the first element of each option row
-			opts := make([]string, len(args.Options))
-			for i, row := range args.Options {
-				if len(row) > 0 {
-					opts[i] = row[0]
+			// Hide elements that are sub-items of other rows
+			isSubItem := make(map[string]bool)
+			for _, row := range args.Options {
+				for _, subItem := range row[1:] {
+					isSubItem[subItem] = true
+				}
+			}
+
+			var opts []string
+			for _, row := range args.Options {
+				if len(row) > 0 && !isSubItem[row[0]] {
+					opts = append(opts, row[0])
 				}
 			}
 			return opts
@@ -96,18 +108,18 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 
 		display.Clear(display.Primary())
 
+		current_options := get_current_options()
+
 		if args.ShowTitle {
 			if args.ShowPathInTitle && len(state.path) > 0 {
-				m.RenderHeader(strings.Join(state.path, "/ "))
+				m.RenderHeader(strings.Join(state.path, "/ "), args.ShowScrollbar)
 			} else if len(args.Title) > 0 {
-				m.RenderHeader(args.Title)
+				m.RenderHeader(args.Title, args.ShowScrollbar)
 			}
 			startY = 9
 		} else {
 			startY = 0
 		}
-
-		current_options := get_current_options()
 
 		if args.SelectorType == SELECTOR_SIMPLE || args.SelectorType == SELECTOR_SIMPLE_WITH_INFO {
 			display.SetColor(display.Primary())
@@ -118,7 +130,7 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 			font := display.Use_Font_Small_Bold()
 
 			if len(current_options) > 0 && state.selection < len(current_options) {
-				display.DrawText(0, 12, font, current_options[state.selection], false)
+				display.DrawTextWrapped(0, 12, 80, 48, font, current_options[state.selection], false, gfx.AlignRight, gfx.AlignBelow)
 			}
 
 			if args.SelectorType == SELECTOR_SIMPLE_WITH_INFO {
@@ -168,7 +180,14 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 		if args.CustomRender != nil {
 			args.CustomRender()
 		}
+
 		m.RenderFooter(args.ButtonLabel, true)
+
+		// Draw scrollbar if there are more items than fit on screen, or just always
+		if args.ShowScrollbar {
+			m.RenderSelectorScrollbar(len(current_options), state.selection, args.ShowScrollbarPos)
+		}
+
 		display.Render()
 	}
 
@@ -275,10 +294,18 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 						state.path = append(state.path, selected_option)
 						render()
 					} else {
-						// Return to the previous menu with our chosen selection
-						return &SelectorReturn{
-							SelectionClass: args.SelectionClass,
-							SelectionPath:  append(state.path, selected_option),
+						for {
+							select {
+							case <-ctx.Done():
+								return nil
+							case dEvt, ok := <-m.KeypadEvents:
+								if !ok || !dEvt.State {
+									return &SelectorReturn{
+										SelectionClass: args.SelectionClass,
+										SelectionPath:  append(state.path, selected_option),
+									}
+								}
+							}
 						}
 					}
 
@@ -341,9 +368,18 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 								state.path = append(state.path, selected_option)
 								render()
 							} else {
-								return &SelectorReturn{
-									SelectionClass: args.SelectionClass,
-									SelectionPath:  append(state.path, selected_option),
+								for {
+									select {
+									case <-ctx.Done():
+										return nil
+									case dEvt, ok := <-m.KeypadEvents:
+										if !ok || !dEvt.State {
+											return &SelectorReturn{
+												SelectionClass: args.SelectionClass,
+												SelectionPath:  append(state.path, selected_option),
+											}
+										}
+									}
 								}
 							}
 						}
@@ -351,5 +387,58 @@ func (m *Menu) ShowSelector(args SelectorArgs, ctx context.Context) *SelectorRet
 				}
 			}
 		}
+	}
+}
+
+func (m *Menu) RenderSelectorScrollbar(n int, pos int, show_pos bool) {
+	// Scrollbar is always rendered on the right side of the screen,
+	// has a width of 3px and goes from top to bottom.
+	// The bar itself is a fixed size of 3px by 8px.
+	// It should be able to position itself anywhere in this range.
+
+	if n <= 1 {
+		return
+	}
+
+	display := m.Display
+
+	// Assuming screen height is 48, header takes 0-8, footer takes 40-48.
+	// Scrollbar area is 8 to 40.
+	yStart := 0.0
+	if show_pos {
+		yStart = 8.0
+	}
+	yEnd := 48.0
+	barHeight := 8.0
+	scrollRange := (yEnd - yStart) - barHeight
+
+	// Calculate Y position
+	yPos := math.Floor(yStart + float64(pos)*scrollRange/float64(n-1))
+
+	display.SetColor(display.Secondary()) // Secondary is foreground color
+
+	// Draw the track line to the left of the scrollbar
+	display.SetLineWidth(2)
+	display.DrawRectangle(80, yStart, 1, yEnd)
+	display.Fill()
+
+	// Draw the scrollbar thumb
+	display.DrawRectangle(81, yPos, 3, barHeight)
+	display.Fill()
+
+	// Hollow out the thumb to the left
+	display.SetColor(display.Primary())
+	display.DrawRectangle(80, yPos+1, 3, barHeight-2)
+	display.Fill()
+
+	// Remove the corners from the thumb
+	display.DrawRectangle(83, yPos, 1, 1)
+	display.Fill()
+	display.DrawRectangle(83, yPos+barHeight-1, 1, 1)
+	display.Fill()
+
+	if show_pos {
+		font := display.Use_Font_Small_Bold()
+		display.DrawTextAligned(84, 0, font, fmt.Sprintf("%d", int(pos+1)), false, gfx.AlignLeft, gfx.AlignNone)
 	}
 }

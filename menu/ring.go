@@ -104,6 +104,8 @@ func (instance *RingMenu) Run() {
 	go m.Timers["screensaver"].Stop()
 	m.Keypad.KeyLightsOn()
 
+	instance.render()
+
 	if m.Get("BeepOnly").(bool) {
 		instance.wg.Go(func() {
 			for {
@@ -173,6 +175,7 @@ func (instance *RingMenu) Run() {
 								if idx > 0 && m.GetMenuKeyAt(idx-1) == "phone" {
 									go m.PopWithArgs(instance.call)
 								} else {
+									m.Set("PhoneActive", true)
 									go m.ToMenuWithArgs("phone", instance.call)
 								}
 								return
@@ -205,6 +208,7 @@ func (instance *RingMenu) render() {
 
 	display.Clear(display.Primary())
 	m.RenderStateCommon()
+	m.RenderClock()
 
 	display.DrawTextWrapped(8, 8, 78, 16, display.Use_Font_Small_Plain(), instance.call.Number, false, gfx.WrapRight, gfx.WrapUp)
 

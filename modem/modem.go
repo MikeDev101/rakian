@@ -8,6 +8,29 @@ import (
 	"github.com/maltegrosse/go-modemmanager"
 )
 
+type IMSEventType int
+
+const (
+	IMS_New_Message IMSEventType = iota
+	IMS_New_Voicemail
+	IMS_Call_Incoming
+	IMS_Call_Outgoing
+	IMS_Call_Connected
+	IMS_Call_Terminated
+	IMS_Call_Held
+	IMS_Call_Unhheld
+	IMS_Call_Muted
+	IMS_Call_Deafened
+	IMS_Call_Undeafened
+	IMS_Call_Ringing_Out
+	IMS_Call_Ringing_In
+	IMS_Call_Error
+	IMS_Registration_Active
+	IMS_Registration_Failure
+	IMS_Registration_Roaming
+	IMS_Registration_Emergency_Only
+)
+
 // Call represents an ongoing or incoming call.
 type Call struct {
 	ID        string
@@ -21,6 +44,11 @@ type Call struct {
 	Ended     chan bool
 	Number    string
 	Announced bool
+}
+
+type IMSEvent struct {
+	Type IMSEventType
+	Data any
 }
 
 func (c *Call) String() string {
@@ -59,6 +87,8 @@ type Modem interface {
 	UnholdCall(call *Call) error
 	SyncVoicemails()
 	GetCalls() []*Call
+	Subscribe(func(event IMSEvent) error) string
+	Unsubscribe(key string)
 
 	// Lifecycle
 	Stop()

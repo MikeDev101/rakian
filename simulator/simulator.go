@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
@@ -20,6 +22,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/fogleman/gg"
+	"github.com/maltegrosse/go-modemmanager"
 )
 
 type Simulator struct {
@@ -128,12 +131,28 @@ func New() *Simulator {
 				}, v.window).Show()
 			}),
 			fyne.NewMenuItem("Set Call State", func() {
+				calls := []string{}
+				for id, c := range v.mockModem.(*MockModem).Calls {
+					calls = append(calls, fmt.Sprintf("%s (%s)", c.Number, id))
+				}
+
+				if len(calls) == 0 {
+					dialog.ShowInformation("Error", "No calls available", v.window)
+					return
+				}
+
+				selectedCall := ""
+				selectedState := ""
+
 				dialog.NewForm(
 					"Set Call State",
 					"OK",
 					"Cancel",
 					[]*widget.FormItem{
-						widget.NewFormItem("", widget.NewRadioGroup(
+						widget.NewFormItem("Call", widget.NewSelect(calls, func(s string) {
+							selectedCall = s
+						})),
+						widget.NewFormItem("State", widget.NewRadioGroup(
 							[]string{
 								"Outgoing",
 								"Active",
@@ -143,38 +162,51 @@ func New() *Simulator {
 								"Terminated",
 							},
 							func(s string) {
-								// TODO
+								selectedState = s
 							},
 						)),
 					},
-					func(b bool) {},
+					func(b bool) {
+						if b && selectedCall != "" && selectedState != "" {
+							var targetID string
+							for id, c := range v.mockModem.(*MockModem).Calls {
+								if fmt.Sprintf("%s (%s)", c.Number, id) == selectedCall {
+									targetID = id
+									break
+								}
+							}
+
+							call, ok := v.mockModem.(*MockModem).Calls[targetID]
+							if ok {
+								oldState := call.State
+								switch selectedState {
+								case "Outgoing":
+									call.State = modemmanager.MmCallStateDialing
+									v.mockModem.(*MockModem).publish(modem.IMSEvent{Type: modem.IMS_Call_Outgoing, Data: call})
+								case "Active":
+									call.State = modemmanager.MmCallStateActive
+									call.StartTime = time.Now()
+									if oldState == modemmanager.MmCallStateHeld {
+										v.mockModem.(*MockModem).publish(modem.IMSEvent{Type: modem.IMS_Call_Unhheld, Data: call})
+									} else {
+										v.mockModem.(*MockModem).publish(modem.IMSEvent{Type: modem.IMS_Call_Connected, Data: call})
+									}
+								case "Held":
+									call.State = modemmanager.MmCallStateHeld
+									v.mockModem.(*MockModem).publish(modem.IMSEvent{Type: modem.IMS_Call_Held, Data: call})
+								case "Incoming":
+									call.State = modemmanager.MmCallStateRingingIn
+									v.mockModem.(*MockModem).publish(modem.IMSEvent{Type: modem.IMS_Call_Incoming, Data: call})
+								case "Waiting":
+									call.State = modemmanager.MmCallStateWaiting
+								case "Terminated":
+									v.mockModem.(*MockModem).HangupCall(call)
+								}
+							}
+						}
+					},
 					v.window,
 				).Show()
-			}),
-		),
-		fyne.NewMenu(
-			"Power Events",
-			fyne.NewMenuItem("Set Battery Level", func() {
-				dialog.NewEntryDialog("Battery Level", "Enter value (0-5):", func(s string) {
-					if _, err := strconv.Atoi(s); err == nil {
-						// TODO
-					}
-				}, v.window).Show()
-			}),
-			fyne.NewMenuItem("Send Charging Signal", func() {
-				// TODO
-			}),
-			fyne.NewMenuItem("Send Discharging Signal", func() {
-				// TODO
-			}),
-			fyne.NewMenuItem("Send Low Battery Signal", func() {
-				// TODO
-			}),
-			fyne.NewMenuItem("Send Very Low Battery Signal", func() {
-				// TODO
-			}),
-			fyne.NewMenuItem("Send Dead Battery Signal", func() {
-				// TODO
 			}),
 		),
 	)

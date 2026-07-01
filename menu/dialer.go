@@ -184,6 +184,7 @@ func (instance *DialerMenu) Run() {
 						if idx > 0 && m.GetMenuKeyAt(idx-1) == "phone" {
 							go m.PopWithArgs(session)
 						} else {
+							m.Set("PhoneActive", true)
 							go m.ToMenuWithArgs("phone", session)
 						}
 						return
@@ -208,6 +209,7 @@ func (instance *DialerMenu) Run() {
 					if idx > 0 && m.GetMenuKeyAt(idx-1) == "phone" {
 						go m.PopWithArgs(session)
 					} else {
+						m.Set("PhoneActive", true)
 						go m.ToMenuWithArgs("phone", session)
 					}
 					return

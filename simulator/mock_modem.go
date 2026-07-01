@@ -2,6 +2,7 @@ package simulator
 
 import (
 	"log"
+	"sync"
 	"time"
 
 	"modem"
@@ -26,6 +27,40 @@ type MockModem struct {
 
 	// Internal state for simulation
 	Calls map[string]*modem.Call
+
+	subscribers   map[string]func(event modem.IMSEvent) error
+	subscribersMu sync.RWMutex
+}
+
+func (m *MockModem) Subscribe(callback func(event modem.IMSEvent) error) string {
+	m.subscribersMu.Lock()
+	defer m.subscribersMu.Unlock()
+	if m.subscribers == nil {
+		m.subscribers = make(map[string]func(modem.IMSEvent) error)
+	}
+	key := uuid.New().String()
+	m.subscribers[key] = callback
+	return key
+}
+
+func (m *MockModem) Unsubscribe(key string) {
+	m.subscribersMu.Lock()
+	defer m.subscribersMu.Unlock()
+	if m.subscribers != nil {
+		delete(m.subscribers, key)
+	}
+}
+
+func (m *MockModem) publish(event modem.IMSEvent) {
+	m.subscribersMu.RLock()
+	defer m.subscribersMu.RUnlock()
+	for _, callback := range m.subscribers {
+		go func(cb func(modem.IMSEvent) error) {
+			if err := cb(event); err != nil {
+				log.Printf("⚠️ Subscriber callback failed: %v", err)
+			}
+		}(callback)
+	}
 }
 
 // Software modem implementation
@@ -81,14 +116,17 @@ func (m *MockModem) PlaceCall(number string) (*modem.Call, error) {
 		Announced: false,
 	}
 	m.Calls[call.ID] = call
+	m.publish(modem.IMSEvent{Type: modem.IMS_Call_Outgoing, Data: call})
 	go func() {
 		time.Sleep(5 * time.Second)
 		log.Printf("[MockModem] Simulated call %s ringing", call)
 		call.State = modemmanager.MmCallStateRingingOut
+		m.publish(modem.IMSEvent{Type: modem.IMS_Call_Ringing_Out, Data: call})
 		time.Sleep(3 * time.Second)
 		log.Printf("[MockModem] Simulated call %s active", call)
 		call.State = modemmanager.MmCallStateActive
 		call.StartTime = time.Now()
+		m.publish(modem.IMSEvent{Type: modem.IMS_Call_Connected, Data: call})
 	}()
 	return call, nil
 }
@@ -98,6 +136,7 @@ func (m *MockModem) AnswerCall(call *modem.Call) error {
 	log.Printf("[MockModem] Answering call from %s", call)
 	call.State = modemmanager.MmCallStateActive
 	call.StartTime = time.Now()
+	m.publish(modem.IMSEvent{Type: modem.IMS_Call_Connected, Data: call})
 	return nil
 }
 
@@ -105,6 +144,7 @@ func (m *MockModem) AnswerCall(call *modem.Call) error {
 func (m *MockModem) HangupCall(call *modem.Call) error {
 	log.Printf("[MockModem] Hanging up call %s", call)
 	call.State = modemmanager.MmCallStateTerminated
+	m.publish(modem.IMSEvent{Type: modem.IMS_Call_Terminated, Data: call})
 	select {
 	case call.Ended <- true:
 	default:
@@ -132,6 +172,7 @@ func (m *MockModem) SendDTMF(call *modem.Call, tones string) error {
 func (m *MockModem) HoldCall(call *modem.Call) error {
 	log.Printf("[MockModem] Holding call %s", call)
 	call.State = modemmanager.MmCallStateHeld
+	m.publish(modem.IMSEvent{Type: modem.IMS_Call_Held, Data: call})
 	return nil
 }
 
@@ -139,6 +180,7 @@ func (m *MockModem) HoldCall(call *modem.Call) error {
 func (m *MockModem) UnholdCall(call *modem.Call) error {
 	log.Printf("[MockModem] Unholding call %s", call)
 	call.State = modemmanager.MmCallStateActive
+	m.publish(modem.IMSEvent{Type: modem.IMS_Call_Unhheld, Data: call})
 	return nil
 }
 
@@ -165,6 +207,7 @@ func (m *MockModem) SimulateIncomingCall(number string) {
 		Announced: false,
 	}
 	m.Calls[call.ID] = call
+	m.publish(modem.IMSEvent{Type: modem.IMS_Call_Incoming, Data: call})
 	m.ringingChan <- call
 }
 

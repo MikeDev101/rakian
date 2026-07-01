@@ -110,6 +110,7 @@ type Driver interface {
 	DrawTextWrapped(int, int, int, int, map[rune]*image.Image, string, bool, RenderType, RenderType)
 	DrawImageAligned(*image.Image, int, int, RenderType, RenderType)
 	GetTextBounds(map[rune]*image.Image, string) (int, int)
+	GetImageBounds(*image.Image) (int, int)
 	Use_Font_Small_Bold() map[rune]*image.Image
 	Use_Font_Small_Plain() map[rune]*image.Image
 	Use_Font_Large_Bold() map[rune]*image.Image

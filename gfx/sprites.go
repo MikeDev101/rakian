@@ -140,6 +140,11 @@ var Sprite_map = map[string]string{
 	"low_battery_2": "0233",
 	"empty_battery": "0234",
 
+	"very_low_battery_0": "0231",
+	"very_low_battery_1": "0232",
+	"very_low_battery_2": "0233",
+	"very_low_battery_3": "0234",
+
 	// Battery discharging
 	"discharging_0": "0235",
 	"discharging_1": "0236",
@@ -355,6 +360,9 @@ var Sprite_map = map[string]string{
 	"drawing_6": "0224",
 	"drawing_7": "0225",
 	"drawing_8": "0226",
+
+	// Radio
+	"radio_0": "0377",
 }
 
 func load_sprite_elem(elem string) (*image.Image, error) {

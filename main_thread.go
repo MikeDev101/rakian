@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"gfx"
 	"keypad"
 	"log"
@@ -105,6 +106,9 @@ func main_thread(
 	menus.CreateOrLoadPersist("CanRing", true)
 	menus.CreateOrLoadPersist("BeepOnly", false)
 	menus.CreateOrLoadPersist("APN", "vzwinternet")
+	menus.CreateOrLoadPersist("DivertOnBusy", false)
+	menus.CreateOrLoadPersist("DivertAlways", false)
+	menus.CreateOrLoadPersist("DivertOnNoAnswer", false)
 
 	// Play boot chime
 	if menus.Get("CanRing").(bool) && !menus.Get("BeepOnly").(bool) {
@@ -125,6 +129,7 @@ func main_thread(
 	// Register menus
 	menus.Register("power", menus.NewPowerMenu)
 	menus.Register("home", menus.NewHomeMenu)
+	menus.Register("home_alert", menus.NewHomeAlert)
 	menus.Register("home_selection", menus.NewHomeSelectionMenu)
 	menus.Register("dialer", menus.NewDialerMenu)
 	menus.Register("phone", menus.NewPhoneMenu)
@@ -141,6 +146,17 @@ func main_thread(
 	menus.Register("phone_book", menus.NewPhonebookMenu)
 	menus.Register("keypad_unlock", menus.NewKeypadUnlockMenu)
 
+	// Stub Menus
+	menus.Register("messages", menus.NewMessagesMenu)
+	menus.Register("chat", menus.NewChatMenu)
+	menus.Register("call_register", menus.NewCallRegisterMenu)
+	menus.Register("profiles", menus.NewProfilesMenu)
+	menus.Register("call_divert", menus.NewCallDivertMenu)
+	menus.Register("apps", menus.NewAppsMenu)
+	menus.Register("clock", menus.NewClockMenu)
+	menus.Register("reminders", menus.NewRemindersMenu)
+	menus.Register("tones", menus.NewTonesMenu)
+
 	// Set runtime keys
 	menus.Set("DebugMode", (debug))
 	menus.Set("FirmwareVersion", FW_VERSION)
@@ -150,6 +166,18 @@ func main_thread(
 	menus.Set("BatteryCharging", false)
 	menus.Set("BluetoothEnabled", false)
 	menus.Set("KeypadLocked", false)
+	menus.Set("PhoneActive", false)
+
+	// TODO: check if there are any unread messages or voicemails
+	menus.Set("NewMessage", false)
+	menus.Set("NewVoicemail", false)
+
+	// Show if diverts are enabled
+	if menus.Get("DivertAlways").(bool) || menus.Get("DivertOnBusy").(bool) || menus.Get("DivertOnNoAnswer").(bool) {
+		menus.Set("DivertsActive", true)
+	} else {
+		menus.Set("DivertsActive", false)
+	}
 
 	// Set initial WiFi status values
 	connected, ssid, strength, ipaddr := misc.GetWiFiStatus()
@@ -194,25 +222,44 @@ func main_thread(
 		}
 	}()
 
-	// Handle modem events
+	// Handle modem events via subscription
 	if phone.OK() {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-
-				case call := <-phone.Ringing():
-					if len(phone.GetCalls()) == 2 {
-						// This should never happen, but if it does, just ignore it
-						continue
-					}
-					go menus.PushWithArgs("ring", call)
-					kp.KeyLightsOn()
-					menus.Timers["keypad"].Restart()
-					menus.Timers["screensaver"].Restart()
+		subKey := phone.Subscribe(func(event modem.IMSEvent) error {
+			switch event.Type {
+			case modem.IMS_Call_Incoming:
+				call, ok := event.Data.(*modem.Call)
+				if !ok {
+					return fmt.Errorf("invalid call data for incoming call event")
 				}
+
+				if menus.Get("PhoneActive").(bool) {
+					return nil
+				}
+
+				log.Printf("📞 New incoming call (main thread event): %v", call)
+
+				if len(phone.GetCalls()) > 2 {
+					return nil
+				}
+
+				kp.KeyLightsOn()
+				menus.Timers["keypad"].Restart()
+				menus.Timers["screensaver"].Restart()
+				go menus.PushWithArgs("ring", call)
+
+			case modem.IMS_New_Message:
+				menus.Set("NewMessage", true)
+				go menus.Push("home_alert")
+
+			case modem.IMS_New_Voicemail:
+				menus.Set("NewVoicemail", true)
 			}
+			return nil
+		})
+
+		go func() {
+			<-ctx.Done()
+			phone.Unsubscribe(subKey)
 		}()
 	}
 
@@ -306,15 +353,14 @@ func main_thread(
 		}
 	}()
 
-	/*
-		// Show alert if there's something wrong with the SIM state
-		if modem != nil && !modem.SimCardInserted {
-			// menus.RenderAlert("prohibited", []string{"No SIM", "card", "inserted."})
-			if menus.Get("CanRing").(bool) || menus.Get("BeepOnly").(bool) {
-				// go menus.PlayAlert()
-			}
-			time.Sleep(3 * time.Second)
-		} */
+	// Show alert if there's something wrong with the SIM state
+	if phone != nil && !phone.OK() {
+		menus.RenderAlert("prohibited", []string{"No SIM", "card", "inserted."})
+		if menus.Get("CanRing").(bool) || menus.Get("BeepOnly").(bool) {
+			go menus.PlayAlert()
+		}
+		time.Sleep(3 * time.Second)
+	}
 
 	// Persist screen for a moment
 	time.Sleep(time.Second)

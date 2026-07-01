@@ -83,9 +83,7 @@ func (instance *LowBatteryAlert) Run() {
 		}()
 	}
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	instance.wg.Go(func() {
 		instance.render()
 
 		select {
@@ -98,7 +96,28 @@ func (instance *LowBatteryAlert) Run() {
 			go instance.parent.Pop()
 			return
 		}
-	}()
+	})
+
+	instance.wg.Go(func() {
+		for {
+			select {
+			case <-instance.ctx.Done():
+				return
+			case evt, ok := <-instance.parent.KeypadEvents:
+				if !ok {
+					return
+				}
+
+				keypad_locked := instance.parent.Get("KeypadLocked").(bool)
+				if evt.State && !keypad_locked {
+					instance.parent.Timers["screensaver"].Restart()
+					instance.parent.Timers["keypad"].Restart()
+					go instance.parent.Pop()
+					return
+				}
+			}
+		}
+	})
 }
 
 func (instance *LowBatteryAlert) render() {

@@ -58,7 +58,7 @@ func (m *Menu) NewSettingsMenu() MenuInstance {
 			SelectionClass: "settings.main",
 			Title:          "Settings",
 			ShowTitle:      true,
-			SelectorType:   SELECTOR_MULTI_3,
+			SelectorType:   SELECTOR_SIMPLE,
 			Options: [][]string{
 				{"Internet status"},
 				{"WLAN",
@@ -100,6 +100,8 @@ func (m *Menu) NewSettingsMenu() MenuInstance {
 			},
 			ShowPathInTitle:  true,
 			PersistLastState: true,
+			ShowScrollbar:    true,
+			ShowScrollbarPos: true,
 			ButtonLabel:      "Select",
 		},
 	}
@@ -203,7 +205,7 @@ func (instance *SettingsMenu) renderAbout() {
 	display.Lock()
 
 	display.Clear(display.Primary())
-	m.RenderHeader("About")
+	m.RenderHeader("About", false)
 
 	font := display.Use_Font_Small_Plain()
 	display.DrawTextAligned(0, 10, font, "Rakian OS", false, gfx.AlignNone, gfx.AlignNone)
@@ -226,7 +228,7 @@ func (instance *SettingsMenu) renderInternetStatus(state_msg string, network_inf
 	display.Lock()
 
 	display.Clear(display.Primary())
-	m.RenderHeader("Internet Status")
+	m.RenderHeader("Internet Status", false)
 
 	font := display.Use_Font_Small_Plain()
 	display.DrawTextAligned(0, 8, font, state_msg, false, gfx.AlignNone, gfx.AlignNone)
@@ -1024,10 +1026,11 @@ func (instance *SettingsMenu) handleSavedNetworks() int {
 		SelectionClass:   "settings.wifi_saved",
 		Title:            "Saved networks",
 		ShowTitle:        true,
-		SelectorType:     SELECTOR_MULTI_3,
+		SelectorType:     SELECTOR_SIMPLE,
 		Options:          options,
 		ButtonLabel:      "Select",
 		PersistLastState: false,
+		ShowScrollbar:    true,
 	}, instance.ctx)
 	if selection != nil {
 		instance.handleWifiSavedSelection(selection.SelectionPath)
@@ -1067,10 +1070,11 @@ func (instance *SettingsMenu) handleSavedBluetooth() int {
 		SelectionClass:   "settings.bt_saved",
 		Title:            "Saved devices",
 		ShowTitle:        true,
-		SelectorType:     SELECTOR_MULTI_3,
+		SelectorType:     SELECTOR_SIMPLE,
 		Options:          options,
 		ButtonLabel:      "Select",
 		PersistLastState: false,
+		ShowScrollbar:    true,
 	}, instance.ctx)
 	if selection != nil {
 		instance.handleBtSavedSelection(selection.SelectionPath)

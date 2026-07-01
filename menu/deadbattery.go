@@ -98,9 +98,7 @@ func (instance *DeadBatteryAlert) Run() {
 		}()
 	}
 
-	instance.wg.Add(1)
-	go func() {
-		defer instance.wg.Done()
+	instance.wg.Go(func() {
 		instance.render()
 
 		select {
@@ -113,5 +111,5 @@ func (instance *DeadBatteryAlert) Run() {
 			go instance.parent.GlobalQuit(1)
 			return
 		}
-	}()
+	})
 }

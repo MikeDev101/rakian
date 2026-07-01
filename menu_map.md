@@ -1,0 +1,127 @@
+# Rakian Menu Map
+
+- **Phone**
+  - **End**
+  - **Options**
+   - End active call
+   - Swap (if more than 1 call)
+   - End all calls (if more than 1 call)
+   - Hold/Unhold
+   - New call
+   - Send DTMF
+   - Phone book
+   - Mute/Unmute
+   - Answer
+   - Reject
+
+- **Home screen**
+  - **Phone book**
+    - Search
+    - Add contact
+    - Service numbers
+    - Erase
+    - Erase all
+    - Edit
+    - Assign tone
+    - Send business card
+    - Assign speed dial
+    - Voice dialing
+  - **Messages**
+    - Write message
+    - Read messages
+    - Sent items
+    - Templates
+    - Delivery reports
+    - Message settings
+      - Set 1
+        - Message centre number
+        - Messages sent as
+        - Message validity
+      - Common
+        - Delivery reports
+        - Reply via same centre
+        - Character support
+    - Voice mailbox number
+    - Listen to voice messages
+    - Broadcast messages
+    - Service command editor
+  - **Chat**
+    - Start chat
+    - Chat history
+    - Chat name
+  - **Call register**
+    - Missed calls
+    - Received calls
+    - Dialled numbers
+    - Erase recent call lists
+    - Show call duration
+    - Show call costs
+      - Call cost settings
+  - **Profiles**
+    - Select
+    - Customize
+    - Rename
+  - **Settings**
+    - **Internet status**
+    - **WLAN**
+      - Toggle
+      - Join Network
+      - Saved Networks
+    - **Cellular**
+      - Toggle
+      - Select Network
+      - Configure APN
+    - **Bluetooth**
+      - Toggle
+      - Pair device
+      - Saved devices
+    - **Call settings**
+      - Auto redial
+      - Auto answer
+      - Speed dial
+    - **Phone settings**
+      - Language
+      - Cell info display
+      - Welcome note
+      - Lights
+    - **Security settings**
+      - PIN code request
+      - Phone security
+      - Call barring Service
+      - Fixed dialing
+    - **About**
+    - **Factory Reset**
+  - **Call divert**
+  - **Apps**
+  - **Calculator**
+    - Equals
+    - Clear
+    - Exchange rate
+      - Foreign as domestic
+      - Domestic as foreign
+    - To domestic
+    - To foreign
+  - **Clock**
+    - Alarm clock
+    - Clock settings
+    - Date setting
+    - Stopwatch
+    - Countdown timer
+    - Automatic update of date and time
+  - **Reminders**
+    - Add new
+      - Alarm on
+      - Alarm off
+    - View all
+    - Erase
+      - One by one
+      - All at once 
+  - **Tones**
+    - Incoming call alert
+    - Ringing tone
+    - Ringing volume
+    - Vibrating alert
+    - Message alert tone
+    - Keypad tones
+    - Warning tones
+    - Composer

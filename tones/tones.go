@@ -18,11 +18,13 @@ import (
 var static_fs embed.FS
 
 type Tones struct {
-	ctx         *oto.Context
-	tonePlayer  *oto.Player
-	dtmfPlayers map[rune]*oto.Player
+	ctx            *oto.Context
+	tonePlayer     *oto.Player
+	dtmfPlayers    map[rune]*oto.Player
 	ringbackPlayer *oto.Player
-	mu          sync.Mutex
+	mu             sync.Mutex
+	playCancel     context.CancelFunc
+	playID         uint64
 }
 
 type Note struct {
@@ -128,6 +130,15 @@ func (t *Tones) Tone(note float64, divider uint8) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	if t.playCancel != nil {
+		t.playCancel()
+		t.playCancel = nil
+	}
+
+	t.toneLocked(note, divider)
+}
+
+func (t *Tones) toneLocked(note float64, divider uint8) {
 	if t.tonePlayer != nil {
 		t.tonePlayer.SetVolume(0)
 		t.tonePlayer = nil
@@ -157,6 +168,12 @@ func (t *Tones) Tone(note float64, divider uint8) {
 func (t *Tones) Stop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	if t.playCancel != nil {
+		t.playCancel()
+		t.playCancel = nil
+	}
+
 	if t.tonePlayer != nil {
 		t.tonePlayer.SetVolume(0)
 		t.tonePlayer = nil
@@ -178,30 +195,60 @@ func note_to_freq(Note float64) float64 {
 }
 
 func (t *Tones) Play(ctx context.Context, notes []Note) {
-	for _, n := range notes {
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			return
-		default:
-			// If Key is greater than 0, play the tone. Otherwise, treat it as a Rest.
-			if n.Key > 0 {
-				t.Tone(n.Key, n.Divider)
-			} else {
-				t.Stop()
-			}
+	t.mu.Lock()
+	if t.playCancel != nil {
+		t.playCancel()
+	}
+	t.playID++
+	myID := t.playID
 
-			timer := time.NewTimer(n.Duration)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				t.Stop()
-				return
-			case <-timer.C:
+	playCtx, cancel := context.WithCancel(ctx)
+	t.playCancel = cancel
+	t.mu.Unlock()
+
+	defer func() {
+		t.mu.Lock()
+		if t.playID == myID {
+			t.playCancel = nil
+			if t.tonePlayer != nil {
+				t.tonePlayer.SetVolume(0)
+				t.tonePlayer = nil
 			}
 		}
+		cancel()
+		t.mu.Unlock()
+	}()
+
+	for _, n := range notes {
+		select {
+		case <-playCtx.Done():
+			return
+		default:
+		}
+
+		t.mu.Lock()
+		if t.playID != myID {
+			t.mu.Unlock()
+			return
+		}
+		if n.Key > 0 {
+			t.toneLocked(n.Key, n.Divider)
+		} else {
+			if t.tonePlayer != nil {
+				t.tonePlayer.SetVolume(0)
+				t.tonePlayer = nil
+			}
+		}
+		t.mu.Unlock()
+
+		timer := time.NewTimer(n.Duration)
+		select {
+		case <-playCtx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
-	t.Stop()
 }
 
 func (t *Tones) PlayFile(path string) {

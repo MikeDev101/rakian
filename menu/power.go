@@ -122,7 +122,18 @@ func (instance *PowerMenu) Run() {
 		go m.SyncPersistent()
 		m.RenderAnimatedAlert("ok", instance.ctx, []string{"Loud", "mode on"})
 		go m.PlayAccepted()
-		time.Sleep(2 * time.Second)
+
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-instance.ctx.Done():
+			timer.Stop()
+		case <-timer.C:
+		case evt := <-m.KeypadEvents:
+			if evt.State {
+				timer.Stop()
+			}
+		}
+
 		go m.Pop()
 		return
 
@@ -132,7 +143,18 @@ func (instance *PowerMenu) Run() {
 		go m.SyncPersistent()
 		m.RenderAnimatedAlert("ok", instance.ctx, []string{"Discreet", "mode on"})
 		go m.PlayAccepted()
-		time.Sleep(2 * time.Second)
+
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-instance.ctx.Done():
+			timer.Stop()
+		case <-timer.C:
+		case evt, ok := <-m.KeypadEvents:
+			if ok && evt.State {
+				timer.Stop()
+			}
+		}
+
 		go m.Pop()
 		return
 
@@ -141,7 +163,18 @@ func (instance *PowerMenu) Run() {
 		m.Set("BeepOnly", false)
 		go m.SyncPersistent()
 		m.RenderAnimatedAlert("ok", instance.ctx, []string{"Silent", "mode on"})
-		time.Sleep(2 * time.Second)
+
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-instance.ctx.Done():
+			timer.Stop()
+		case <-timer.C:
+		case evt, ok := <-m.KeypadEvents:
+			if ok && evt.State {
+				timer.Stop()
+			}
+		}
+
 		go m.Pop()
 		return
 
@@ -169,7 +202,17 @@ func (instance *PowerMenu) Run() {
 				misc.SetCellularDataState(apn, false)
 				m.Phone.SetFlightMode(true)
 			}
-			time.Sleep(2 * time.Second)
+
+			timer := time.NewTimer(2 * time.Second)
+			select {
+			case <-instance.ctx.Done():
+				timer.Stop()
+			case <-timer.C:
+			case evt, ok := <-m.KeypadEvents:
+				if ok && evt.State {
+					timer.Stop()
+				}
+			}
 		}
 		go m.Pop()
 		return

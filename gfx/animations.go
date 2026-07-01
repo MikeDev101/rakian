@@ -248,6 +248,26 @@ func LoadAnimations(d Driver) {
 		FrameDelay: 150 * time.Millisecond,
 	})
 
+	d.SetAnimationCache("profiles", &Animation{
+		InitialFrame: &Frame{
+			Type:  PLAY_FRAME,
+			Image: "profiles_0",
+		},
+		InitialFrameDelay: 1 * time.Second,
+		Frames: []Frame{
+			{Type: PLAY_FRAME, Image: "profiles_0"},
+			{Type: PLAY_FRAME, Image: "profiles_1"},
+			{Type: PLAY_FRAME, Image: "profiles_2"},
+			{Type: PLAY_FRAME, Image: "profiles_3"},
+			{Type: PLAY_FRAME, Image: "profiles_4"},
+			{Type: PLAY_FRAME, Image: "profiles_5"},
+			{Type: PLAY_FRAME, Image: "profiles_6"},
+			{Type: PLAY_FRAME, Image: "profiles_7"},
+			{Type: STOP_FRAME, Image: "profiles_0"},
+		},
+		FrameDelay: 150 * time.Millisecond,
+	})
+
 	d.SetAnimationCache("call_divert", &Animation{
 		InitialFrame: &Frame{
 			Type:  PLAY_FRAME,
@@ -414,5 +434,16 @@ func LoadAnimations(d Driver) {
 			{Type: STOP_FRAME, Image: "drawing_8"},
 		},
 		FrameDelay: 200 * time.Millisecond,
+	})
+
+	d.SetAnimationCache("radio", &Animation{
+		InitialFrame: &Frame{
+			Type:  PLAY_FRAME,
+			Image: "radio_0",
+		},
+		InitialFrameDelay: 1 * time.Second,
+		Frames: []Frame{
+			{Type: STOP_FRAME, Image: "radio_0"},
+		},
 	})
 }
